@@ -1,0 +1,1595 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SisBank — Contabilidad Bancaria</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Sora:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<!-- Librerías de procesamiento -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --ink:#0f1117;--ink2:#3a3d4a;--ink3:#6b7280;
+  --bg:#f7f8fa;--surface:#ffffff;--surface2:#f0f2f5;
+  --accent:#1a56db;--accent2:#0e3fa3;--accent-pale:#e8effe;
+  --green:#0d7a4e;--green-pale:#e6f5ee;
+  --red:#c0392b;--red-pale:#fdf0ef;
+  --border:#e2e5ec;--border2:#cbd5e1;--radius:12px;
+}
+
+body{font-family:'Sora',sans-serif;background:var(--bg);color:var(--ink);overflow-x:hidden}
+
+/* --- SETUP OVERLAY --- */
+#setup-overlay {
+  position:fixed;inset:0;background:rgba(15,17,23,0.95);
+  display:flex;justify-content:center;align-items:center;z-index:9999;backdrop-filter:blur(10px);
+}
+.setup-card {
+  background:white;padding:3rem;border-radius:24px;max-width:500px;width:90%;text-align:center;
+  box-shadow:0 25px 50px -12px rgba(0,0,0,0.5);
+}
+.upload-zone {
+  border:2px dashed var(--border2);padding:3rem;border-radius:16px;margin:2rem 0;
+  cursor:pointer;transition:0.3s;background:var(--bg);
+}
+.upload-zone:hover {border-color:var(--accent);background:var(--accent-pale)}
+
+/* --- HEADER & NAV --- */
+header{background:var(--ink);color:white;padding:1.2rem 2.5rem;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:100}
+.logo{font-weight:700;font-size:1.4rem;letter-spacing:-0.5px}
+.logo span{color:var(--accent)}
+
+nav{display:flex;gap:0.5rem;background:rgba(255,255,255,0.05);padding:0.4rem;border-radius:14px}
+nav button{background:transparent;border:none;color:var(--ink3);padding:0.6rem 1.2rem;border-radius:10px;cursor:pointer;font-weight:600;font-family:inherit;transition:0.2s}
+nav button:hover{color:white}
+nav button.active{background:var(--accent);color:white}
+
+/* --- MAIN --- */
+main{max-width:1400px;margin:2rem auto;padding:0 1.5rem}
+.view{display:none}
+.view.active{display:block;animation:viewFade 0.4s ease}
+@keyframes viewFade{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+.card{background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);margin-bottom:2rem;overflow:hidden}
+.card-header{padding:1.5rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+
+/* --- FORMULARIO DIARIO --- */
+.entry-form{padding:1.5rem;background:var(--surface2)}
+.entry-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1.5rem;margin-bottom:1.5rem}
+.form-group label{display:block;font-size:0.75rem;font-weight:700;margin-bottom:0.5rem;color:var(--ink2)}
+
+/* Se ajustaron las columnas de la fila para hacer espacio al botón de arrastre (drag-handle) */
+.line-row{display:grid;grid-template-columns:24px 160px 1fr 70px 120px 120px 120px 45px;gap:10px;margin-bottom:10px;align-items:start; border-radius:8px; transition: background 0.2s, box-shadow 0.2s;}
+.line-row.dragging{opacity:0.6; background:var(--surface2); border: 1px dashed var(--accent); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); z-index: 50;}
+.drag-handle{cursor:grab; display:flex; align-items:center; justify-content:center; color:var(--border2); font-size:1.2rem; height:45px; user-select:none; transition:0.2s;}
+.drag-handle:hover{color:var(--accent);}
+.drag-handle:active{cursor:grabbing;}
+
+.btn-toggle-type{padding:0.75rem 0.5rem;border-radius:8px;font-weight:700;font-size:0.7rem;border:none;cursor:pointer;transition:0.2s;width:100%}
+.btn-debe{background:var(--accent-pale);color:var(--accent);}
+.btn-haber{background:var(--ink2);color:white;}
+.autocomplete-wrapper{position:relative}
+.suggestions{position:absolute;top:100%;left:0;right:0;background:white;border:1px solid var(--border);border-radius:8px;box-shadow:0 10px 25px rgba(0,0,0,0.1);max-height:220px;overflow-y:auto;z-index:100;display:none}
+.suggestion-item{padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--bg);font-size:0.8rem; line-height: 1.2;}
+.suggestion-item:hover, .suggestion-item.active-suggestion {background:var(--accent-pale); border-left: 3px solid var(--accent);}
+.btn-create-acc{background:var(--green-pale); color:var(--green); font-weight:700; text-align:center; padding:12px; border-top:1px solid var(--border)}
+
+input,select{width:100%;padding:0.75rem 1rem;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:0.9rem;transition: 0.2s;}
+input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-pale)}
+input.error{border-color:var(--red); box-shadow:0 0 0 4px var(--red-pale);}
+
+/* Estilo para creación de cuenta inline */
+input.creating-mode {
+    background: #ffffff !important;
+    border-color: var(--green);
+    box-shadow: 0 0 0 4px var(--green-pale);
+    color: var(--green);
+    font-weight: 600;
+}
+input.creating-mode::placeholder { color: #86efac; font-weight: 400; }
+
+/* Estilo visual para la columna "Parcial" */
+.input-parcial { font-style: italic; }
+
+/* Estilo para el modo edición activo */
+.editing-mode-active {
+    border: 2px dashed var(--accent) !important;
+    background: #fdfeff !important;
+}
+
+.mono{font-family:'JetBrains Mono',monospace;font-size:0.85rem}
+.text-right{text-align:right}
+
+/* --- ESTILOS DE ÁRBOL DEL MAYOR --- */
+.tree-item { user-select: none; }
+.hover-bg:hover { background: var(--surface2) !important; }
+
+/* --- BUTTONS --- */
+.btn{padding:0.75rem 1.5rem;border-radius:10px;font-weight:600;cursor:pointer;transition:0.2s;font-family:inherit;border:none;display:inline-flex;align-items:center;gap:8px}
+.btn-primary{background:var(--accent);color:white}
+.btn-primary:hover{background:var(--accent2)}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--ink2)}
+.btn-outline:hover{background:var(--surface2)}
+.btn-danger{color:var(--red);background:var(--red-pale)}
+
+/* --- TABLAS --- */
+table{width:100%;border-collapse:collapse}
+th{padding:1rem;background:var(--bg);font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;color:var(--ink3);border-bottom:2px solid var(--border)}
+td{padding:1rem;border-bottom:1px solid var(--border);font-size:0.9rem}
+
+/* --- TOTALS BAR --- */
+.totals-bar{display:flex;gap:2rem;background:var(--ink);color:white;padding:1.2rem 2rem;border-radius:16px;margin-top:1.5rem;justify-content:flex-end}
+.total-item{display:flex;flex-direction:column;align-items:flex-end}
+.total-item label{font-size:0.65rem;color:var(--ink3);text-transform:uppercase;font-weight:700}
+.total-item span{font-family:'JetBrains Mono';font-size:1.2rem}
+
+/* --- PRUEBA DE VIDA CATÁLOGO --- */
+.stats-badge {
+    background: var(--accent-pale); color: var(--accent); padding: 6px 16px;
+    border-radius: 50px; font-weight: 700; font-size: 0.8rem; border: 1px solid var(--accent);
+}
+
+#toast{position:fixed;bottom:2rem;right:2rem;background:var(--ink);color:white;padding:1rem 2rem;border-radius:12px;transform:translateY(100px);opacity:0;transition:0.3s;z-index:9999}
+#toast.show{transform:translateY(0);opacity:1}
+
+/* --- CUSTOM MODAL --- */
+#custom-modal {
+    position: fixed; inset: 0; background: rgba(15, 17, 23, 0.85); z-index: 10000;
+    display: none; align-items: center; justify-content: center; backdrop-filter: blur(4px);
+}
+.modal-card {
+    background: white; width: 90%; max-width: 400px; border-radius: 16px;
+    padding: 2rem; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+    animation: viewFade 0.3s ease;
+}
+.modal-card h3 { margin-bottom: 1rem; color: var(--ink); }
+.modal-card p { color: var(--ink2); font-size: 0.9rem; margin-bottom: 1.5rem; white-space: pre-wrap; }
+.modal-card input { width: 100%; padding: 0.8rem; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 1.5rem; }
+.modal-card .btn-group { display: flex; justify-content: flex-end; gap: 10px; }
+</style>
+</head>
+<body>
+
+<!-- OVERLAY DE CARGA SI NO HAY STORAGE -->
+<div id="setup-overlay" style="display:none">
+    <div class="setup-card">
+        <h2 style="font-size:2rem;letter-spacing:-1px">Inicializar Motor CUC</h2>
+        <p style="color:var(--ink3);margin:1rem 0">Sube el archivo CSV con el catálogo bancario oficial para comenzar.</p>
+        <input type="file" id="csv-input" accept=".csv" style="display:none">
+        <div class="upload-zone" onclick="document.getElementById('csv-input').click()">
+            <div style="font-size:3rem">📂</div>
+            <p>Haz clic para seleccionar el archivo</p>
+            <span style="font-size:0.7rem;color:var(--ink3)">(Columnas requeridas: CÓDIGO, NOMBRE DE CUENTA)</span>
+        </div>
+    </div>
+</div>
+
+<header>
+    <div class="logo">SisBank<span>PRO</span></div>
+    <div style="display:flex;align-items:center;gap:2rem">
+        <div id="db-status" style="font-size:0.7rem;font-weight:700;background:rgba(255,255,255,0.1);padding:0.4rem 1rem;border-radius:20px">Iniciando...</div>
+        <nav>
+            <button onclick="navigate('diario')" id="nav-diario" class="active">Libro Diario</button>
+            <button onclick="navigate('mayor')" id="nav-mayor">Libro Mayor</button>
+            <button onclick="navigate('catalogo')" id="nav-catalogo">Catálogo</button>
+        </nav>
+    </div>
+</header>
+
+<main>
+    <!-- VISTA: LIBRO DIARIO -->
+    <section id="view-diario" class="view active">
+        <div class="card">
+            <div class="card-header">
+                <h2 id="form-title">Voucher Contable</h2>
+                <div style="display:flex;gap:0.75rem;align-items:center;">
+                    <!-- Selector de Plantillas -->
+                    <select id="template-selector" class="btn btn-outline" style="padding:0.65rem; font-size:0.8rem; border-radius:8px; cursor:pointer;" onchange="loadTemplateSelect(this)">
+                        <option value="">📁 Cargar Plantilla...</option>
+                    </select>
+                    
+                    <!-- Botones de Exportación / Importación -->
+                    <button class="btn btn-outline" onclick="exportOperationalData()" title="Exportar Backup">💾 Backup</button>
+                    <button class="btn btn-outline" onclick="document.getElementById('import-backup-input').click()" title="Importar Backup">📂 Importar</button>
+                    <input type="file" id="import-backup-input" accept=".json" style="display:none" onchange="handleImportBackupChange(event)">
+                    
+                    <button class="btn btn-outline" onclick="resetDB()">Limpiar BD</button>
+                    <!-- EXPORTACIÓN UNIFICADA -->
+                    <button class="btn btn-primary" onclick="exportSistemaCompleto()">⬇ Exportar Sistema Completo</button>
+                </div>
+            </div>
+            
+            <div class="entry-form" id="entry-form-container">
+                <div class="entry-grid">
+                    <div class="form-group">
+                        <label>FECHA CONTABLE</label>
+                        <input type="date" id="entry-date">
+                    </div>
+                    <div class="form-group">
+                        <label>CONCEPTO / GLOSA GENERAL</label>
+                        <input type="text" id="entry-glosa" placeholder="Descripción de la transacción...">
+                    </div>
+                </div>
+
+                <div id="lines-container"></div>
+                
+                <div style="margin-top:1.5rem;display:flex;justify-content:space-between;align-items:center">
+                    <button class="btn btn-outline" onclick="addLine()">+ Añadir Fila</button>
+                    <div style="display:flex; gap:10px;">
+                        <button class="btn btn-outline" onclick="saveTemplate()">💾 Guardar como Plantilla</button>
+                        <button class="btn btn-outline" id="btn-cancel-edit" onclick="cancelEdit()" style="display:none; color:var(--ink2);">Cancelar Edición</button>
+                        <button class="btn btn-primary" id="btn-post-entry" onclick="postEntry()" style="padding:1rem 2.5rem">Postear Asiento</button>
+                    </div>
+                </div>
+
+                <div class="totals-bar">
+                    <div class="total-item"><label>Total Debe</label><span id="total-debe">0.00</span></div>
+                    <div class="total-item"><label>Total Haber</label><span id="total-haber">0.00</span></div>
+                    <div class="total-item"><label>Diferencia</label><span id="total-diff">0.00</span></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><h3>Asientos Recientes</h3></div>
+            <div style="overflow-x:auto">
+                <table id="journal-table">
+                    <thead>
+                        <tr>
+                            <th style="width:100px">Fecha</th>
+                            <th style="width:150px">Código</th>
+                            <th>Cuenta / Glosa</th>
+                            <th class="text-right">Parcial</th>
+                            <th class="text-right">Debe</th>
+                            <th class="text-right">Haber</th>
+                        </tr>
+                    </thead>
+                    <tbody id="journal-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- VISTA: LIBRO MAYOR -->
+    <section id="view-mayor" class="view">
+        <div class="card" style="margin-bottom: 1rem;">
+            <div class="card-header">
+                <div style="display:flex;flex-direction:column;gap:5px">
+                    <h2 style="font-size:1.4rem">Libro Mayor (Jerárquico)</h2>
+                    <div id="mayor-acc-name" style="font-size:0.85rem; color:var(--ink3); font-weight:600;">Seleccione una cuenta del catálogo para visualizar...</div>
+                </div>
+                <div style="display:flex;gap:0.75rem;align-items:center;">
+                    <!-- EXPORTACIÓN UNIFICADA -->
+                    <button class="btn btn-primary" onclick="exportSistemaCompleto()">⬇ Exportar Sistema Completo</button>
+                </div>
+            </div>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 350px 1fr; gap: 1.5rem; align-items: start;">
+            <!-- PANEL IZQUIERDO: Árbol de Catálogo -->
+            <div class="card" style="margin-bottom:0; max-height: 70vh; display: flex; flex-direction: column;">
+                <div style="padding: 1rem; border-bottom: 1px solid var(--border);">
+                    <input type="text" id="mayor-tree-search" placeholder="Buscar cuenta o grupo (ej: 11)..." oninput="renderMayorTree()" style="width: 100%;">
+                </div>
+                <div id="mayor-tree-container" style="overflow-y: auto; padding: 1rem; font-size: 0.85rem; flex: 1;">
+                    <!-- Árbol renderizado por JS -->
+                </div>
+            </div>
+            
+            <!-- PANEL DERECHO: Tabla del Mayor -->
+            <div class="card" style="margin-bottom:0; max-height: 70vh; display: flex; flex-direction: column;">
+                <div style="overflow-y:auto; flex: 1;">
+                    <table id="mayor-table">
+                        <thead style="position:sticky;top:0;z-index:5">
+                            <tr>
+                                <th style="width:120px; text-align:center;">Fecha</th>
+                                <th style="width:120px; text-align:center;">Asiento</th>
+                                <th>Concepto</th>
+                                <th class="text-right">Débito</th>
+                                <th class="text-right">Crédito</th>
+                                <th class="text-right" style="background:var(--surface2)">Saldo</th>
+                            </tr>
+                        </thead>
+                        <tbody id="mayor-tbody">
+                            <tr><td colspan="6" style="text-align:center; color:var(--ink3); padding: 2rem;">Seleccione una cuenta a la izquierda para generar el libro mayor.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- VISTA: CATÁLOGO -->
+    <section id="view-catalogo" class="view">
+        <div class="card">
+            <div class="card-header">
+                <div style="display:flex;flex-direction:column;gap:5px">
+                    <h2 style="font-size:1.4rem">Catálogo Único de Cuentas (CUC)</h2>
+                    <div id="catalog-counter" class="stats-badge">Contando registros...</div>
+                </div>
+                <div style="width:400px">
+                    <input type="text" id="cat-search" placeholder="Buscar por código o nombre..." oninput="renderCatalog()">
+                </div>
+            </div>
+            <div style="max-height:70vh;overflow-y:auto">
+                <table>
+                    <thead style="position:sticky;top:0;z-index:5">
+                        <tr>
+                            <th style="width:180px">Código</th>
+                            <th>Nombre de la Cuenta</th>
+                            <th>Nivel</th>
+                        </tr>
+                    </thead>
+                    <tbody id="catalog-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+</main>
+
+<!-- MODAL PERSONALIZADO -->
+<div id="custom-modal">
+    <div class="modal-card">
+        <h3 id="modal-title">Título</h3>
+        <p id="modal-message">Mensaje</p>
+        <input type="text" id="modal-input" placeholder="" autocomplete="off">
+        <div class="btn-group">
+            <button id="modal-cancel" class="btn btn-outline">Cancelar</button>
+            <button id="modal-confirm" class="btn btn-primary">Aceptar</button>
+        </div>
+    </div>
+</div>
+
+<div id="toast">Notificación</div>
+
+
+<script>
+/**
+ * MOTOR SISBANK PRO - RECONSTRUIDO CON EXPORTACIÓN UNIFICADA Y MAYOR JERÁRQUICO
+ */
+let baseCatalog = []; 
+let dbCatalog = [];   
+let journal = [];
+let templates = [];
+let editingEntryId = null; 
+
+// Variables para Libro Mayor
+let currentMayorCode = '';
+let currentMayorName = '';
+let expandedNodes = new Set(['1', '2', '3', '4', '5', '6', '7', '8', '9']); // Expandimos los Elementos base por defecto
+
+const STORAGE_BASE_CUC = 'sisbank_base_cuc_db'; 
+const STORAGE_CUC = 'sisbank_cuc_db';
+const STORAGE_JOURNAL = 'sisbank_journal_db';
+const STORAGE_TEMPLATES = 'sisbank_templates_db';
+
+// --- UTILIDADES DE FORMATEO (UX) ---
+function parseCurrency(str) {
+    if (!str) return 0;
+    return parseFloat(str.toString().replace(/,/g, '')) || 0;
+}
+
+function formatCurrencyInput(input) {
+    let cursorPosition = input.selectionStart;
+    const originalLength = input.value.length;
+
+    let rawValue = input.value.replace(/[^0-9.]/g, '');
+    
+    const parts = rawValue.split('.');
+    if (parts.length > 2) {
+        rawValue = parts[0] + '.' + parts.slice(1).join('');
+    }
+
+    const splitValue = rawValue.split('.');
+    let intPart = splitValue[0];
+    const decPart = splitValue.length > 1 ? '.' + splitValue[1] : '';
+
+    if (intPart) {
+        intPart = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    }
+
+    const formattedValue = intPart + decPart;
+    input.value = formattedValue;
+
+    cursorPosition += (formattedValue.length - originalLength);
+    input.setSelectionRange(cursorPosition, cursorPosition);
+}
+
+// --- INICIO ---
+window.onload = () => {
+    const storedBase = localStorage.getItem(STORAGE_BASE_CUC);
+    const storedCUC = localStorage.getItem(STORAGE_CUC);
+    const storedJournal = localStorage.getItem(STORAGE_JOURNAL);
+    const storedTemplates = localStorage.getItem(STORAGE_TEMPLATES);
+
+    if(storedJournal) journal = JSON.parse(storedJournal);
+    if(storedTemplates) templates = JSON.parse(storedTemplates);
+
+    if(storedCUC) {
+        dbCatalog = JSON.parse(storedCUC);
+        
+        if (storedBase) {
+            baseCatalog = JSON.parse(storedBase);
+        } else {
+            baseCatalog = [...dbCatalog];
+            localStorage.setItem(STORAGE_BASE_CUC, JSON.stringify(baseCatalog));
+        }
+
+        initApp();
+    } else {
+        document.getElementById('setup-overlay').style.display = 'flex';
+    }
+    
+    initDragAndDrop();
+};
+
+function initApp() {
+    document.getElementById('setup-overlay').style.display = 'none';
+    document.getElementById('db-status').textContent = `DB: ${dbCatalog.length} registros`;
+    
+    cancelEdit(false); 
+    
+    renderTemplateSelector(); 
+    renderJournal();
+    renderCatalog(); 
+    renderMayorTree(); // Renderizamos el árbol del Mayor de inmediato
+}
+
+// --- LÓGICA DE BACKUPS OPERATIVOS (EXPORTAR/IMPORTAR) ---
+async function exportOperationalData() {
+    if (journal.length === 0 && templates.length === 0) {
+        showToast("No hay asientos ni plantillas operativas para exportar.");
+        return;
+    }
+
+    const cuentas_nuevas = dbCatalog.filter(c => !baseCatalog.some(b => b.c === c.c));
+    
+    const data = {
+        asientos: journal,
+        plantillas: templates,
+        cuentas_nuevas: cuentas_nuevas,
+        metadata: {
+            fecha_exportacion: new Date().toISOString(),
+            version: "1.0",
+            requiere_catalogo: true
+        }
+    };
+
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type: "application/json"});
+    saveAs(blob, `backup_operativo_${Date.now()}.json`);
+    showToast("Datos operativos exportados correctamente.");
+}
+
+async function handleImportBackupChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+        try {
+            const data = JSON.parse(event.target.result);
+            await importOperationalData(data);
+        } catch (err) {
+            showCustomModal('Error de Lectura', 'Archivo inválido', 'alert');
+        }
+        e.target.value = ''; 
+    };
+    reader.readAsText(file);
+}
+
+async function importOperationalData(data) {
+    if (!baseCatalog || baseCatalog.length === 0) {
+        showCustomModal('Error Crítico', 'Debe cargar un catálogo de cuentas antes de importar datos', 'alert');
+        return;
+    }
+
+    if (!data.asientos || !data.plantillas || !data.cuentas_nuevas || !data.metadata) {
+        showCustomModal('Estructura Inválida', 'Archivo inválido', 'alert');
+        return;
+    }
+
+    const confirmMsg = '¿Está seguro de importar este backup? Esto reemplazará TODOS los asientos, plantillas y cuentas creadas manualmente. (El catálogo base se mantendrá intacto).';
+    const confirm = await showCustomModal('Importar Backup', confirmMsg, 'confirm');
+    if (!confirm) return;
+
+    const combinedCatalog = [...baseCatalog, ...data.cuentas_nuevas];
+    const catalogCodes = new Set(combinedCatalog.map(c => c.c));
+
+    let allValid = true;
+    
+    for (let newAcc of data.cuentas_nuevas) {
+        const parentCode = getParentCode(newAcc.c);
+        if (parentCode !== null && !catalogCodes.has(parentCode)) {
+            allValid = false;
+            break;
+        }
+    }
+
+    const checkLines = (lines) => {
+        for (let l of lines) {
+            if (!catalogCodes.has(l.c)) return false;
+        }
+        return true;
+    };
+
+    if (allValid) {
+        for (let a of data.asientos) { if (!checkLines(a.lines)) { allValid = false; break; } }
+    }
+    if (allValid) {
+        for (let t of data.plantillas) { if (!checkLines(t.lines)) { allValid = false; break; } }
+    }
+
+    if (!allValid) {
+        showCustomModal('Error de Consistencia', 'Existen cuentas que no están en el catálogo ni en las cuentas nuevas', 'alert');
+        return;
+    }
+
+    dbCatalog = combinedCatalog;
+    journal = data.asientos;
+    templates = data.plantillas;
+
+    localStorage.setItem(STORAGE_CUC, JSON.stringify(dbCatalog));
+    localStorage.setItem(STORAGE_JOURNAL, JSON.stringify(journal));
+    localStorage.setItem(STORAGE_TEMPLATES, JSON.stringify(templates));
+
+    initApp(); 
+    showToast('Datos operativos cargados correctamente.');
+}
+
+// --- LÓGICA DE PLANTILLAS DE ASIENTOS ---
+function renderTemplateSelector() {
+    const selector = document.getElementById('template-selector');
+    if(!selector) return;
+    
+    let html = '<option value="">📁 Cargar Plantilla...</option>';
+    templates.forEach(t => {
+        html += `<option value="${t.id}">${t.name}</option>`;
+    });
+    
+    if (templates.length > 0) {
+        html += `<option disabled>──────────────</option>`;
+        html += `<option value="_manage">⚙️ Administrar Plantillas...</option>`;
+    }
+    
+    selector.innerHTML = html;
+}
+
+// SISTEMA DE MODALES PERSONALIZADOS (Reemplazo de alert, prompt, confirm)
+function showCustomModal(title, msg, type = 'alert', placeholder = '') {
+    return new Promise(resolve => {
+        const m = document.getElementById('custom-modal');
+        document.getElementById('modal-title').textContent = title;
+        document.getElementById('modal-message').textContent = msg;
+        
+        const input = document.getElementById('modal-input');
+        const btnCancel = document.getElementById('modal-cancel');
+        const btnConfirm = document.getElementById('modal-confirm');
+        
+        if (type === 'prompt') {
+            input.style.display = 'block';
+            input.value = '';
+            input.placeholder = placeholder;
+        } else {
+            input.style.display = 'none';
+        }
+        
+        btnCancel.style.display = (type !== 'alert') ? 'block' : 'none';
+        
+        m.style.display = 'flex';
+        if(type === 'prompt') setTimeout(() => input.focus(), 100);
+
+        btnCancel.onclick = () => { m.style.display = 'none'; resolve(null); };
+        btnConfirm.onclick = () => { 
+            m.style.display = 'none'; 
+            resolve(type === 'prompt' ? input.value : true); 
+        };
+    });
+}
+
+async function saveTemplate() {
+    const lines = [];
+    let hasErrors = false;
+
+    document.querySelectorAll('.line-row').forEach((row, index) => {
+        const c = row.dataset.selectedCode;
+        const typeBtn = row.querySelector('.btn-toggle-type');
+        
+        if (c) {
+            lines.push({ c: c, t: typeBtn ? typeBtn.dataset.type : 'D', order: index });
+        } else if (row.querySelector('.input-code').value.trim() !== '') {
+            hasErrors = true; 
+        }
+    });
+
+    if (hasErrors) { showToast("Hay cuentas inválidas. Corríjalas antes de guardar la plantilla."); return; }
+    if (lines.length === 0) { showToast("El asiento está vacío. Añada líneas primero."); return; }
+
+    const name = await showCustomModal('Guardar Plantilla', 'Ingrese un nombre descriptivo para esta plantilla de asiento:', 'prompt', 'Ej: Nómina mensual');
+    if (!name || !name.trim()) return;
+
+    if (templates.some(t => t.name.toLowerCase() === name.trim().toLowerCase())) {
+        const overwrite = await showCustomModal('Plantilla duplicada', `Ya existe una plantilla llamada "${name.trim()}". ¿Desea guardarla de todas formas?`, 'confirm');
+        if(!overwrite) return;
+    }
+
+    const newTemplate = {
+        id: Date.now().toString(),
+        name: name.trim(),
+        createdAt: new Date().toISOString(),
+        lines: lines
+    };
+
+    templates.push(newTemplate);
+    localStorage.setItem(STORAGE_TEMPLATES, JSON.stringify(templates));
+    renderTemplateSelector();
+    showToast("Plantilla guardada exitosamente.");
+}
+
+async function loadTemplateSelect(el) {
+    const val = el.value;
+    el.value = ""; 
+    
+    if (!val) return;
+    
+    if (val === '_manage') {
+        manageTemplates();
+        return;
+    }
+
+    const template = templates.find(t => t.id === val);
+    if (!template) return;
+    
+    const confirmLoad = await showCustomModal('Cargar Plantilla', `¿Cargar plantilla "${template.name}"? Esto reemplazará las líneas actuales del voucher.`, 'confirm');
+    if (!confirmLoad) return;
+
+    document.getElementById('lines-container').innerHTML = '';
+    
+    let missingAccounts = 0;
+    
+    template.lines.forEach(l => {
+        const account = dbCatalog.find(x => x.c === l.c);
+        if (account) {
+            addLine(account.c, account.n, l.t);
+        } else {
+            missingAccounts++;
+            addLine('', '', l.t);
+        }
+    });
+
+    if (missingAccounts > 0) {
+        showToast(`Se cargó la plantilla, pero ${missingAccounts} cuenta(s) ya no existen en el catálogo actual.`);
+    } else {
+        showToast("Plantilla aplicada con éxito.");
+    }
+    
+    calcTotals();
+}
+
+async function manageTemplates() {
+    if (templates.length === 0) { showToast("No hay plantillas guardadas."); return; }
+    
+    let msg = "Tus plantillas guardadas:\n\n";
+    templates.forEach((t, i) => msg += `${i + 1}. ${t.name}\n`);
+    msg += "\nEscribe el NÚMERO de la plantilla que deseas ELIMINAR:";
+    
+    const res = await showCustomModal('Administrar Plantillas', msg, 'prompt', 'Ej: 1');
+    if (res) {
+        const idx = parseInt(res) - 1;
+        if (idx >= 0 && idx < templates.length) {
+            const deletedName = templates[idx].name;
+            templates.splice(idx, 1);
+            localStorage.setItem(STORAGE_TEMPLATES, JSON.stringify(templates));
+            renderTemplateSelector();
+            showToast(`Plantilla "${deletedName}" eliminada permanentemente.`);
+        } else {
+            showToast("Número inválido.");
+        }
+    }
+}
+
+// --- PROCESAMIENTO CSV ---
+document.getElementById('csv-input').onchange = (e) => {
+    const file = e.target.files[0];
+    if(!file) return;
+
+    Papa.parse(file, {
+        header: true,
+        complete: (results) => {
+            const cleanData = results.data.map(row => {
+                const code = (row['CÓDIGO'] || row['CODIGO'] || '').toString().replace(/['\s]/g, '').trim();
+                const name = (row['NOMBRE DE CUENTA'] || row['CUENTA'] || '').toString().trim();
+                return { c: code, n: name, l: code.length <= 1 ? 1 : (code.length <= 2 ? 2 : (code.length <= 4 ? 3 : 4)) };
+            }).filter(x => x.c && x.n);
+
+            if(cleanData.length > 0) {
+                dbCatalog = cleanData;
+                baseCatalog = [...cleanData];
+                localStorage.setItem(STORAGE_BASE_CUC, JSON.stringify(baseCatalog));
+                localStorage.setItem(STORAGE_CUC, JSON.stringify(dbCatalog));
+                initApp();
+                showToast(`Motor activado: ${dbCatalog.length} cuentas.`);
+            } else {
+                showToast("Formato no válido. Verifica las columnas.");
+            }
+        }
+    });
+};
+
+// --- LÓGICA VOUCHER ---
+function addLine(prefillCode = '', prefillName = '', prefillType = 'D', pVal = '', dVal = '', hVal = '') {
+    const id = Date.now() + Math.random();
+    const typeLabel = prefillType === 'H' ? 'HABER' : 'DEBE';
+    const typeClass = prefillType === 'H' ? 'btn-toggle-type btn-haber' : 'btn-toggle-type btn-debe';
+    
+    const formatFmt = (val) => val > 0 ? parseFloat(val).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '';
+
+    const html = `
+        <div class="line-row" id="row-${id}" draggable="true" data-selected-code="${prefillCode}">
+            <div class="drag-handle" title="Arrastrar para reordenar">⋮⋮</div>
+            <div class="autocomplete-wrapper">
+                <input type="text" class="input-code mono" placeholder="Código o Nombre..." autocomplete="off" 
+                    oninput="handleSearch(this)" onkeydown="handleKeydown(event, this)" onblur="handleBlur(this)" value="${prefillCode}">
+                <div class="suggestions"></div>
+            </div>
+            <input type="text" class="input-name" placeholder="Cuenta..." readonly style="background:var(--bg)"
+                onblur="finalizeCreation(this)" onkeydown="handleNameKeydown(event, this)" value="${prefillName}">
+            <button type="button" class="${typeClass}" data-type="${prefillType}" onclick="toggleType(this)">${typeLabel}</button>
+            <input type="text" class="input-parcial text-right mono" placeholder="0.00" oninput="formatCurrencyInput(this); calcTotals()" value="${formatFmt(pVal)}">
+            <input type="text" class="input-debe text-right mono" placeholder="0.00" oninput="formatCurrencyInput(this); calcTotals()" value="${formatFmt(dVal)}">
+            <input type="text" class="input-haber text-right mono" placeholder="0.00" oninput="formatCurrencyInput(this); calcTotals()" value="${formatFmt(hVal)}">
+            <button class="btn btn-danger" onclick="document.getElementById('row-${id}').remove(); calcTotals()">✕</button>
+        </div>
+    `;
+    document.getElementById('lines-container').insertAdjacentHTML('beforeend', html);
+}
+
+function toggleType(btn) {
+    if(btn.dataset.type === 'D') {
+        btn.dataset.type = 'H';
+        btn.textContent = 'HABER';
+        btn.className = 'btn-toggle-type btn-haber';
+    } else {
+        btn.dataset.type = 'D';
+        btn.textContent = 'DEBE';
+        btn.className = 'btn-toggle-type btn-debe';
+    }
+}
+
+function getParentCode(code) {
+    if (code.length <= 1) return null; 
+    if (code.length === 2) return code.substring(0, 1); 
+    if (code.length === 3 || code.length === 4) return code.substring(0, 2); 
+    return code.substring(0, code.length - 2); 
+}
+
+function handleSearch(el) {
+    const query = el.value.trim().toLowerCase();
+    const suggest = el.nextElementSibling;
+    const row = el.closest('.line-row');
+
+    if ((row.dataset.selectedCode && row.dataset.selectedCode !== el.value.trim()) || row.dataset.creatingCode) {
+        row.dataset.selectedCode = "";
+        delete row.dataset.creatingCode;
+        
+        const nameInput = row.querySelector('.input-name');
+        nameInput.value = "";
+        nameInput.readOnly = true;
+        nameInput.classList.remove('creating-mode');
+        nameInput.placeholder = "Cuenta...";
+        el.classList.remove('error');
+    }
+
+    if(!query) { suggest.style.display = 'none'; return; }
+
+    const rowId = row.id;
+
+    const matches = dbCatalog
+        .filter(x => x.c.includes(query) || x.n.toLowerCase().includes(query))
+        .sort((a, b) => {
+            const aStart = a.c.startsWith(query);
+            const bStart = b.c.startsWith(query);
+            if (aStart && !bStart) return -1;
+            if (!aStart && bStart) return 1;
+            return a.c.localeCompare(b.c);
+        })
+        .slice(0, 15);
+
+    let html = matches.map(m => `
+        <div class="suggestion-item" onclick="selectAcc('${rowId}', '${m.c}', '${m.n.replace(/'/g, "")}')">
+            <div style="font-weight:600; color:var(--accent); font-family:'JetBrains Mono'; font-size:0.85rem">${m.c}</div>
+            <div style="font-size:0.75rem; color:var(--ink2)">${m.n}</div>
+        </div>
+    `).join('');
+
+    const exactMatch = dbCatalog.find(x => x.c === query || x.n.toLowerCase() === query);
+    if (!exactMatch && /^\d+$/.test(query)) {
+        html += `
+            <div class="suggestion-item btn-create-acc" onclick="activateCreationMode('${rowId}', '${query}')">
+                + Crear cuenta "${query}" (Presione Enter)
+            </div>
+        `;
+    }
+
+    if(html) {
+        suggest.innerHTML = html;
+        suggest.style.display = 'block';
+    } else {
+        suggest.style.display = 'none';
+    }
+}
+
+function handleKeydown(e, el) {
+    const suggest = el.nextElementSibling;
+    if (suggest.style.display === 'none') {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            el.blur(); 
+        }
+        return;
+    }
+
+    const items = suggest.querySelectorAll('.suggestion-item');
+    if (items.length === 0) return;
+
+    let activeIdx = Array.from(items).findIndex(item => item.classList.contains('active-suggestion'));
+
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (activeIdx >= 0) items[activeIdx].classList.remove('active-suggestion');
+        activeIdx = (activeIdx + 1) % items.length;
+        items[activeIdx].classList.add('active-suggestion');
+        items[activeIdx].scrollIntoView({block: "nearest"});
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (activeIdx >= 0) items[activeIdx].classList.remove('active-suggestion');
+        activeIdx = (activeIdx - 1 + items.length) % items.length;
+        items[activeIdx].classList.add('active-suggestion');
+        items[activeIdx].scrollIntoView({block: "nearest"});
+    } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (activeIdx >= 0) {
+            items[activeIdx].click(); 
+        } else {
+            el.blur(); 
+        }
+    }
+}
+
+function handleBlur(el) {
+    setTimeout(() => {
+        const query = el.value.trim();
+        const row = el.closest('.line-row');
+        const suggest = el.nextElementSibling;
+        suggest.style.display = 'none';
+
+        if (row.dataset.creatingCode) return; 
+
+        if (!query) {
+            row.dataset.selectedCode = "";
+            row.querySelector('.input-name').value = "";
+            el.classList.remove('error');
+            return;
+        }
+
+        if (row.dataset.selectedCode && row.dataset.selectedCode === query) {
+            el.classList.remove('error');
+            return;
+        }
+
+        const queryLower = query.toLowerCase();
+        
+        const exactCode = dbCatalog.filter(x => x.c.toLowerCase() === queryLower);
+        if (exactCode.length === 1) {
+            selectAcc(row.id, exactCode[0].c, exactCode[0].n);
+            return;
+        }
+
+        const exactName = dbCatalog.filter(x => x.n.toLowerCase() === queryLower);
+        if (exactName.length === 1) {
+            selectAcc(row.id, exactName[0].c, exactName[0].n);
+            return;
+        }
+
+        if (/^\d+$/.test(query)) {
+            activateCreationMode(row.id, query);
+            return;
+        }
+
+        showToast("Debe seleccionar una cuenta válida del listado.");
+        el.classList.add('error');
+        el.value = "";
+        row.querySelector('.input-name').value = "";
+        row.dataset.selectedCode = "";
+        
+    }, 150); 
+}
+
+function activateCreationMode(rowId, query) {
+    const row = document.getElementById(rowId);
+    const inputCode = row.querySelector('.input-code');
+    const inputName = row.querySelector('.input-name');
+
+    const parentCode = getParentCode(query);
+    if (parentCode !== null && !dbCatalog.some(x => x.c === parentCode)) {
+        showToast(`No se puede crear: No existe la cuenta padre (${parentCode})`);
+        inputCode.classList.add('error');
+        row.dataset.selectedCode = "";
+        return; 
+    }
+
+    row.dataset.creatingCode = query;
+    inputCode.value = query;
+    inputCode.classList.remove('error');
+    
+    inputName.readOnly = false;
+    inputName.value = "";
+    inputName.placeholder = "Ingrese el nombre de la nueva cuenta...";
+    inputName.classList.add('creating-mode');
+    
+    setTimeout(() => inputName.focus(), 50);
+}
+
+function handleNameKeydown(e, el) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        el.blur(); 
+    }
+}
+
+function finalizeCreation(el) {
+    const row = el.closest('.line-row');
+    if (!row.dataset.creatingCode) return; 
+
+    const code = row.dataset.creatingCode;
+    const name = el.value.trim(); 
+
+    el.readOnly = true;
+    el.classList.remove('creating-mode');
+    el.placeholder = "Cuenta...";
+
+    if (!name) {
+        showToast("Creación cancelada: Nombre vacío.");
+        row.querySelector('.input-code').value = "";
+        row.querySelector('.input-code').classList.add('error');
+        delete row.dataset.creatingCode;
+        return;
+    }
+
+    const newAcc = { 
+        c: code, 
+        n: name, 
+        l: code.length <= 1 ? 1 : (code.length <= 2 ? 2 : (code.length <= 4 ? 3 : 4)) 
+    };
+    
+    if(!dbCatalog.some(x => x.c === newAcc.c)) {
+        dbCatalog.push(newAcc);
+        localStorage.setItem(STORAGE_CUC, JSON.stringify(dbCatalog));
+        document.getElementById('db-status').textContent = `DB: ${dbCatalog.length} registros`;
+        showToast("Cuenta creada y asociada correctamente.");
+        renderMayorTree(); // Refrescar el árbol visual si se crea una cuenta
+    }
+
+    selectAcc(row.id, code, name);
+}
+
+function selectAcc(rowId, code, name) {
+    const row = document.getElementById(rowId);
+    const inputCode = row.querySelector('.input-code');
+    const inputName = row.querySelector('.input-name');
+    
+    inputCode.value = code;
+    inputCode.classList.remove('error');
+    
+    inputName.value = name;
+    inputName.readOnly = true;
+    inputName.classList.remove('creating-mode');
+    inputName.placeholder = "Cuenta...";
+    
+    delete row.dataset.creatingCode;
+    row.dataset.selectedCode = code; 
+    row.querySelector('.suggestions').style.display = 'none';
+}
+
+function calcTotals() {
+    let d = 0, h = 0;
+    document.querySelectorAll('.input-debe').forEach(el => d += parseCurrency(el.value));
+    document.querySelectorAll('.input-haber').forEach(el => h += parseCurrency(el.value));
+    
+    document.getElementById('total-debe').textContent = d.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    document.getElementById('total-haber').textContent = h.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    const diff = Math.abs(d - h);
+    document.getElementById('total-diff').textContent = diff.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    document.getElementById('total-diff').style.color = diff < 0.01 ? 'var(--green)' : 'var(--red)';
+}
+
+
+function editEntry(id) {
+    const entry = journal.find(e => e.id === id);
+    if (!entry) return;
+
+    editingEntryId = id;
+    document.getElementById('form-title').textContent = "✏️ Editando Asiento";
+    document.getElementById('entry-form-container').classList.add('editing-mode-active');
+    document.getElementById('btn-post-entry').textContent = "Actualizar Asiento";
+    document.getElementById('btn-cancel-edit').style.display = "inline-flex";
+
+    document.getElementById('entry-date').value = entry.date;
+    document.getElementById('entry-glosa').value = entry.glosa;
+
+    document.getElementById('lines-container').innerHTML = '';
+    entry.lines.forEach(l => {
+        addLine(l.c, l.n, l.t, l.p, l.d, l.h);
+    });
+
+    calcTotals();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function cancelEdit(showMsg = true) {
+    editingEntryId = null;
+    document.getElementById('form-title').textContent = "Voucher Contable";
+    document.getElementById('entry-form-container').classList.remove('editing-mode-active');
+    document.getElementById('btn-post-entry').textContent = "Postear Asiento";
+    document.getElementById('btn-cancel-edit').style.display = "none";
+    
+    document.getElementById('entry-date').valueAsDate = new Date();
+    document.getElementById('entry-glosa').value = '';
+    
+    document.getElementById('lines-container').innerHTML = '';
+    for(let i=0; i<3; i++) addLine();
+    calcTotals();
+    
+    if (showMsg) showToast("Edición cancelada.");
+}
+
+function postEntry() {
+    const date = document.getElementById('entry-date').value;
+    const glosa = document.getElementById('entry-glosa').value;
+    const totD = parseCurrency(document.getElementById('total-debe').textContent);
+    const totH = parseCurrency(document.getElementById('total-haber').textContent);
+
+    if(!date || !glosa) { showToast("Fecha y Glosa obligatorias"); return; }
+    if(Math.abs(totD - totH) > 0.01 || totD === 0) { showToast("Asiento descuadrado o vacío"); return; }
+
+    const lines = [];
+    let hasErrors = false;
+
+    document.querySelectorAll('.line-row').forEach(row => {
+        const c = row.dataset.selectedCode; 
+        const inputValue = row.querySelector('.input-code').value;
+        const n = row.querySelector('.input-name').value;
+        const typeBtn = row.querySelector('.btn-toggle-type');
+        
+        if (inputValue && !c) {
+            hasErrors = true;
+            row.querySelector('.input-code').classList.add('error');
+        } else if (c && n) {
+            lines.push({
+                c, n, 
+                t: typeBtn ? typeBtn.dataset.type : null,
+                p: parseCurrency(row.querySelector('.input-parcial').value),
+                d: parseCurrency(row.querySelector('.input-debe').value),
+                h: parseCurrency(row.querySelector('.input-haber').value)
+            });
+        }
+    });
+
+    if(hasErrors) {
+        showToast("Existen cuentas sin validar. Debe seleccionar o crear correctamente las cuentas en rojo.");
+        return;
+    }
+
+    const entryData = { id: editingEntryId || Date.now(), date, glosa, lines };
+
+    if (editingEntryId) {
+        const index = journal.findIndex(e => e.id === editingEntryId);
+        if (index !== -1) journal[index] = entryData;
+        showToast("Asiento actualizado.");
+    } else {
+        journal.push(entryData);
+        showToast("Asiento posteado.");
+    }
+    
+    localStorage.setItem(STORAGE_JOURNAL, JSON.stringify(journal));
+    
+    cancelEdit(false);
+    renderJournal();
+    if(currentMayorCode) renderMayorTable(); 
+}
+
+// --- LÓGICA DE ÁRBOL DEL MAYOR Y SELECCIÓN ---
+function toggleNode(e, code) {
+    e.stopPropagation();
+    if (expandedNodes.has(code)) expandedNodes.delete(code);
+    else expandedNodes.add(code);
+    renderMayorTree();
+}
+
+function renderMayorTree() {
+    const q = document.getElementById('mayor-tree-search').value.toLowerCase();
+    const container = document.getElementById('mayor-tree-container');
+    let html = '';
+
+    const sortedCatalog = [...dbCatalog].sort((a, b) => a.c.localeCompare(b.c));
+
+    sortedCatalog.forEach(acc => {
+        const isMatch = acc.c.includes(q) || acc.n.toLowerCase().includes(q);
+        
+        let isVisible = true;
+        if (!q) {
+            let parent = getParentCode(acc.c);
+            while (parent) {
+                if (!expandedNodes.has(parent)) {
+                    isVisible = false;
+                    break;
+                }
+                parent = getParentCode(parent);
+            }
+        } else {
+            if (!isMatch) isVisible = false;
+        }
+
+        if (!isVisible) return;
+
+        const pad = (acc.l - 1) * 15;
+        const hasChildren = sortedCatalog.some(x => x.c !== acc.c && x.c.startsWith(acc.c) && x.l > acc.l);
+        
+        const toggleIcon = hasChildren 
+            ? `<span onclick="toggleNode(event, '${acc.c}')" style="cursor:pointer; width:15px; display:inline-block; text-align:center; font-size:0.7rem; color:var(--ink3)">${expandedNodes.has(acc.c) && !q ? '▼' : '▶'}</span>` 
+            : `<span style="width:15px; display:inline-block;"></span>`;
+
+        const bg = currentMayorCode === acc.c ? 'var(--accent-pale)' : 'transparent';
+        const weight = acc.l <= 2 ? 'bold' : 'normal';
+
+        html += `
+            <div style="padding-left:${pad}px; background:${bg}; padding-top:6px; padding-bottom:6px; border-radius:4px; display:flex; align-items:center; gap:5px;" class="tree-item hover-bg">
+                ${toggleIcon}
+                <div style="cursor:pointer; flex:1; font-weight:${weight}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" onclick="selectMayorAcc('${acc.c}', '${acc.n.replace(/'/g, "")}')" title="${acc.c} - ${acc.n}">
+                    <span class="mono" style="color:var(--accent);">${acc.c}</span> 
+                    <span style="font-size:0.8rem; color:var(--ink2); margin-left:4px;">${acc.n}</span>
+                </div>
+            </div>
+        `;
+    });
+    container.innerHTML = html;
+}
+
+function selectMayorAcc(code, name) {
+    currentMayorCode = code;
+    currentMayorName = name;
+    document.getElementById('mayor-acc-name').textContent = `NOMBRE DE CUENTA: ${code} - ${name.toUpperCase()}`;
+    renderMayorTree(); 
+    renderMayorTable();
+}
+
+function renderMayorTable() {
+    const tbody = document.getElementById('mayor-tbody');
+    if (!currentMayorCode) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--ink3); padding: 2rem;">Seleccione una cuenta a la izquierda para generar el libro mayor.</td></tr>';
+        return;
+    }
+
+    let saldo = 0;
+    let rowsHtml = '';
+    let hasData = false;
+
+    const formatFmt = (val) => val !== 0 ? parseFloat(val).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '-';
+
+    journal.forEach((entry, idx) => {
+        let totalD = 0;
+        let totalH = 0;
+        
+        entry.lines.forEach(l => {
+            if (l.c.startsWith(currentMayorCode)) {
+                totalD += l.d || 0;
+                totalH += l.h || 0;
+            }
+        });
+
+        if (totalD > 0 || totalH > 0) {
+            hasData = true;
+            saldo += (totalD - totalH);
+            
+            rowsHtml += `
+                <tr>
+                    <td class="mono" style="font-size:0.75rem; text-align:center;">${entry.date}</td>
+                    <td class="mono text-center" style="text-align:center; color:var(--ink3)">#${idx + 1}</td>
+                    <td>${entry.glosa}</td>
+                    <td class="text-right mono" style="color:var(--ink)">${formatFmt(totalD)}</td>
+                    <td class="text-right mono" style="color:var(--ink)">${formatFmt(totalH)}</td>
+                    <td class="text-right mono" style="font-weight:600; background:var(--surface2); color:${saldo < 0 ? 'var(--red)' : 'var(--accent)'}">${formatFmt(saldo)}</td>
+                </tr>
+            `;
+        }
+    });
+
+    if (!hasData) {
+        rowsHtml = '<tr><td colspan="6" style="text-align:center; color:var(--ink3); padding: 2rem;">No hay movimientos en el diario para esta cuenta o sus subcuentas.</td></tr>';
+    }
+
+    tbody.innerHTML = rowsHtml;
+}
+
+
+// --- RENDERIZADOS ---
+function renderJournal() {
+    const tbody = document.getElementById('journal-tbody');
+    tbody.innerHTML = '';
+    
+    const formatFmt = (val) => val > 0 ? parseFloat(val).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '-';
+    
+    [...journal].reverse().forEach(entry => {
+        let isHaberSection = false;
+        let rowsHtml = '';
+
+        entry.lines.forEach((l, idx) => {
+            if (l.t === 'H') isHaberSection = true;
+            else if (l.t === 'D') isHaberSection = false;
+            else {
+                if (l.h > 0) isHaberSection = true;
+                if (l.d > 0) isHaberSection = false;
+            }
+
+            let indent = 0;
+            if (l.c.length > 4) indent += 1.5;
+            if (isHaberSection) indent += 3;
+
+            rowsHtml += `
+                <tr>
+                    <td class="mono" style="font-size:0.75rem; text-align:center">${idx === 0 ? entry.date : ''}</td>
+                    <td class="mono" style="font-weight:600;color:var(--accent);text-align:center">${l.c}</td>
+                    <td style="padding-left:calc(1rem + ${indent}rem)">${l.n}</td>
+                    <td class="text-right mono">${formatFmt(l.p)}</td>
+                    <td class="text-right mono">${formatFmt(l.d)}</td>
+                    <td class="text-right mono">${formatFmt(l.h)}</td>
+                </tr>
+            `;
+        });
+        
+        rowsHtml += `
+            <tr style="background:var(--surface2); border-bottom: 2px solid var(--border2)">
+                <td colspan="2"></td>
+                <td colspan="3" style="font-style:italic; color:var(--ink2); padding-left:1rem; vertical-align:middle;">
+                    v/r: ${entry.glosa} <span style="margin-left:1rem;color:var(--ink3);font-size:0.7rem">(REF: ${entry.id})</span>
+                </td>
+                <td class="text-right" style="white-space: nowrap;">
+                    <button class="btn btn-outline" style="padding:0.4rem 0.8rem; font-size:0.75rem; border:none; color:var(--accent); margin-right:5px;" onclick="editEntry(${entry.id})">✏️ Editar</button>
+                    <button class="btn btn-danger" style="padding:0.4rem 0.8rem; font-size:0.75rem; border:none;" onclick="deleteEntry(${entry.id})">🗑️ Eliminar</button>
+                </td>
+            </tr>
+        `;
+
+        tbody.innerHTML += rowsHtml;
+    });
+}
+
+let isDeletingEntry = false;
+async function deleteEntry(id) {
+    if (isDeletingEntry) return; 
+    isDeletingEntry = true;
+    try {
+        const confirmed = await showCustomModal('Eliminar Asiento', '¿Está seguro de eliminar este asiento? Esta acción no se puede deshacer.', 'confirm');
+        if (confirmed) {
+            const initialLength = journal.length;
+            journal = journal.filter(e => e.id !== id); 
+            
+            if (journal.length !== initialLength) {
+                localStorage.setItem(STORAGE_JOURNAL, JSON.stringify(journal)); 
+                renderJournal(); 
+                if(currentMayorCode) renderMayorTable(); 
+                showToast("Asiento eliminado correctamente.");
+            }
+        }
+    } finally {
+        isDeletingEntry = false;
+    }
+}
+
+function renderCatalog() {
+    const q = document.getElementById('cat-search').value.toLowerCase();
+    const tbody = document.getElementById('catalog-tbody');
+    const counter = document.getElementById('catalog-counter');
+    
+    const filtered = dbCatalog
+        .filter(x => x.c.includes(q) || x.n.toLowerCase().includes(q))
+        .sort((a, b) => {
+            const aStart = a.c.startsWith(q);
+            const bStart = b.c.startsWith(q);
+            if (aStart && !bStart) return -1;
+            if (!aStart && bStart) return 1;
+            return a.c.localeCompare(b.c);
+        });
+
+    counter.innerHTML = `Mostrando <b>${filtered.length.toLocaleString()}</b> de <b>${dbCatalog.length.toLocaleString()}</b> registros totales`;
+
+    tbody.innerHTML = filtered.map(x => {
+        let style = '';
+        if (x.l === 1) style = 'font-weight:800; background:#e2e5ec; text-transform:uppercase; color:var(--ink); border-top:2px solid var(--border2);';
+        else if (x.l === 2) style = 'font-weight:700; background:var(--surface2); color:var(--ink2);';
+        else if (x.l === 3) style = 'font-weight:600; color:var(--ink2);';
+        else style = 'font-weight:400; color:var(--ink3);';
+
+        return `
+        <tr style="${style}">
+            <td class="mono">${x.c}</td>
+            <td style="padding-left:${(x.l-1)*15}px">${x.n}</td>
+            <td style="font-size:0.7rem;opacity:0.7">Nivel ${x.l}</td>
+        </tr>
+        `;
+    }).join('');
+}
+
+// --- EXPORTACIÓN UNIFICADA (DIARIO Y MAYOR CON FÓRMULAS VIVAS) ---
+async function exportSistemaCompleto() {
+    if(journal.length === 0) { showToast("Nada que exportar en el Diario."); return; }
+    
+    showToast("Generando Sistema Completo, por favor espere...");
+
+    const wb = new ExcelJS.Workbook();
+
+    // ----------------------------------------------------
+    // HOJA 1: LIBRO DIARIO
+    // ----------------------------------------------------
+    const wsDiario = wb.addWorksheet('Libro Diario');
+
+    wsDiario.columns = [
+        { header: 'FECHA', key: 'f', width: 12 },
+        { header: 'CÓDIGO', key: 'c', width: 15 },
+        { header: 'DETALLE', key: 'n', width: 45 },
+        { header: 'PARCIAL', key: 'p', width: 15 },
+        { header: 'DEBE', key: 'd', width: 15 },
+        { header: 'HABER', key: 'h', width: 15 }
+    ];
+
+    wsDiario.getRow(1).font = { bold: true, color: { argb: 'FFFFFF' } };
+    wsDiario.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '0F1117' } };
+    wsDiario.getRow(1).alignment = { horizontal: 'center', vertical: 'middle' };
+
+    // Mapa lógico de dónde queda cada dato en la hoja de Excel
+    const diarioMap = {};
+
+    journal.forEach((e, journalIndex) => {
+        let isHaberSection = false;
+
+        const numRowObj = wsDiario.addRow({ n: `- ${journalIndex + 1} -` });
+        numRowObj.getCell('n').alignment = { horizontal: 'center' };
+        numRowObj.getCell('n').font = { bold: true };
+        const numRow = numRowObj.number;
+
+        const entryData = { numRow: numRow, lines: [] };
+        let firstLineRow = null;
+
+        e.lines.forEach((l, index) => {
+            if (l.t === 'H') isHaberSection = true;
+            else if (l.t === 'D') isHaberSection = false;
+            else {
+                if (l.h > 0) isHaberSection = true;
+                if (l.d > 0) isHaberSection = false;
+            }
+
+            const r = wsDiario.addRow({ 
+                f: index === 0 ? e.date : '', 
+                c: l.c, 
+                n: l.n, 
+                p: l.p > 0 ? l.p : null,
+                d: l.d > 0 ? l.d : null, 
+                h: l.h > 0 ? l.h : null 
+            });
+
+            if (index === 0) firstLineRow = r.number;
+
+            entryData.lines.push({
+                c: l.c,
+                row: r.number,
+                d: l.d || 0,
+                h: l.h || 0
+            });
+
+            let indent = 0;
+            if (l.c.length > 4) {
+                indent += 1; 
+            } else {
+                r.getCell('c').font = { bold: true };
+                r.getCell('n').font = { bold: true };
+            }
+            
+            if (isHaberSection) {
+                indent += 4;
+            }
+
+            if (indent > 0) {
+                r.getCell('n').alignment = { indent: indent };
+            }
+            
+            r.getCell('c').alignment = { horizontal: 'center' };
+            r.getCell('f').alignment = { horizontal: 'center' };
+
+            ['p', 'd', 'h'].forEach(col => {
+                const cell = r.getCell(col);
+                if(cell.value) cell.numFmt = '#,##0.00';
+            });
+        });
+
+        const gRow = wsDiario.addRow({ c: '', n: `v/r: ${e.glosa}` });
+        gRow.font = { italic: true };
+        gRow.getCell('n').alignment = { indent: 1 };
+        
+        entryData.glosaRow = gRow.number;
+        entryData.firstLineRow = firstLineRow;
+        diarioMap[e.id] = entryData;
+
+        wsDiario.addRow([]); 
+    });
+
+
+
+    // ----------------------------------------------------
+    // HOJA 2: LIBRO MAYOR (Vinculado por Fórmulas)
+    // ----------------------------------------------------
+    const wsMayor = wb.addWorksheet('Libro Mayor');
+    
+    wsMayor.columns = [
+        { width: 12 }, // Fecha (A)
+        { width: 15 }, // Asiento (B)
+        { width: 45 }, // Concepto (C)
+        { width: 15 }, // Débito (D)
+        { width: 15 }, // Crédito (E)
+        { width: 15 }  // Saldo (F)
+    ];
+
+    // FILTRADO CRÍTICO: Solo cuentas con actividad real (Débito > 0 o Crédito > 0)
+    const accountsWithActivity = new Set();
+    journal.forEach(e => e.lines.forEach(l => {
+        if (l.d > 0 || l.h > 0) {
+            accountsWithActivity.add(l.c);
+        }
+    }));
+    
+    // Ordenarlas jerárquicamente
+    const sortedCodes = Array.from(accountsWithActivity).sort((a, b) => a.localeCompare(b));
+
+    sortedCodes.forEach(code => {
+        const acc = dbCatalog.find(x => x.c === code) || { c: code, n: 'Cuenta Desconocida' };
+        
+        // Encabezado de la Cuenta
+        const titleRow = wsMayor.addRow([`NOMBRE DE CUENTA: ${acc.c} - ${acc.n.toUpperCase()}`]);
+        titleRow.font = { bold: true, size: 12 };
+        wsMayor.mergeCells(`A${titleRow.number}:F${titleRow.number}`);
+        
+        wsMayor.addRow([]);
+
+        // Encabezados de Tabla del Mayor
+        const headerRow = wsMayor.addRow(['FECHA', 'ASIENTO', 'CONCEPTO', 'DÉBITO', 'CRÉDITO', 'SALDO']);
+        headerRow.font = { bold: true, color: { argb: 'FFFFFF' } };
+        headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '0F1117' } };
+        headerRow.alignment = { horizontal: 'center' };
+
+        let startDataRow = wsMayor.lastRow.number + 1;
+        let currentDataRow = startDataRow;
+
+        journal.forEach((entry, idx) => {
+            const eMap = diarioMap[entry.id];
+            // Filtrar SOLO las líneas de ESTE asiento para ESTA cuenta que tengan valores reales
+            const linesForAcc = eMap.lines.filter(l => l.c === code && (l.d > 0 || l.h > 0));
+            
+            if (linesForAcc.length > 0) {
+                linesForAcc.forEach(l => {
+                    // Celdas conectadas vía Fórmulas Relativas a la Hoja del Diario
+                    const r = wsMayor.addRow([
+                        { formula: `='Libro Diario'!A${eMap.firstLineRow}` }, // F1: Fecha
+                        { formula: `='Libro Diario'!C${eMap.numRow}` },       // F2: Num Asiento
+                        { formula: `='Libro Diario'!C${eMap.glosaRow}` },     // F3: Concepto (Glosa)
+                        { formula: `='Libro Diario'!E${l.row}` },             // F4: Débito
+                        { formula: `='Libro Diario'!F${l.row}` },             // F5: Crédito
+                        0 // Placeholder para Saldo (F6)
+                    ]);
+                    
+                    r.getCell(1).alignment = { horizontal: 'center' };
+                    r.getCell(2).alignment = { horizontal: 'center' };
+                    r.getCell(4).numFmt = '#,##0.00';
+                    r.getCell(5).numFmt = '#,##0.00';
+                    r.getCell(6).numFmt = '#,##0.00';
+
+                    // FÓRMULA DEL SALDO ACUMULATIVO
+                    if (currentDataRow === startDataRow) {
+                        r.getCell(6).value = { formula: `D${currentDataRow}-E${currentDataRow}` };
+                    } else {
+                        r.getCell(6).value = { formula: `F${currentDataRow-1}+D${currentDataRow}-E${currentDataRow}` };
+                    }
+                    currentDataRow++;
+                });
+            }
+        });
+
+        // Espaciadores entre cuentas en el Excel
+        wsMayor.addRow([]);
+        wsMayor.addRow([]);
+    });
+
+    const buf = await wb.xlsx.writeBuffer();
+    saveAs(new Blob([buf]), `Sistema_Contable_Completo_${Date.now()}.xlsx`);
+    showToast("Exportación completada exitosamente.");
+}
+
+function navigate(id) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+    document.getElementById('view-'+id).classList.add('active');
+    document.getElementById('nav-'+id).classList.add('active');
+    if(id === 'catalogo') renderCatalog();
+    if(id === 'mayor' && currentMayorCode) renderMayorTable();
+}
+
+function showToast(m) {
+    const t = document.getElementById('toast');
+    t.textContent = m; t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+async function resetDB() {
+    const confirmed = await showCustomModal('Limpiar Base de Datos', '¿Estás seguro de borrar todas las cuentas, asientos y plantillas?', 'confirm');
+    if(confirmed) {
+        localStorage.clear();
+        location.reload();
+    }
+}
+
+// --- MOTOR DRAG AND DROP ---
+function initDragAndDrop() {
+    const container = document.getElementById('lines-container');
+    let draggedRow = null;
+
+    container.addEventListener('dragstart', e => {
+        const row = e.target.closest('.line-row');
+        if(row) {
+            draggedRow = row;
+            setTimeout(() => row.classList.add('dragging'), 0);
+        }
+    });
+
+    container.addEventListener('dragend', e => {
+        if(draggedRow) {
+            draggedRow.classList.remove('dragging');
+            draggedRow = null;
+        }
+    });
+
+    container.addEventListener('dragover', e => {
+        e.preventDefault(); 
+        const afterElement = getDragAfterElement(container, e.clientY);
+        if (draggedRow) {
+            if (afterElement == null) {
+                container.appendChild(draggedRow);
+            } else {
+                container.insertBefore(draggedRow, afterElement);
+            }
+        }
+    });
+}
+
+function getDragAfterElement(container, y) {
+    const draggableElements = [...container.querySelectorAll('.line-row:not(.dragging)')];
+
+    return draggableElements.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+        if (offset < 0 && offset > closest.offset) {
+            return { offset: offset, element: child };
+        } else {
+            return closest;
+        }
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
+}
+
+document.addEventListener('click', e => {
+    if(!e.target.closest('.autocomplete-wrapper')) {
+        document.querySelectorAll('.suggestions').forEach(s => s.style.display = 'none');
+    }
+});
+</script>
+</body>
+</html>
