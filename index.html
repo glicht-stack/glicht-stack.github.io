@@ -63,7 +63,7 @@ main{max-width:1400px;margin:2rem auto;padding:0 1.5rem}
 .form-group label{display:block;font-size:0.75rem;font-weight:700;margin-bottom:0.5rem;color:var(--ink2)}
 
 /* Se ajustaron las columnas de la fila para hacer espacio al botón de arrastre (drag-handle) */
-.line-row{display:grid;grid-template-columns:24px 160px 1fr 70px 120px 120px 120px 45px;gap:10px;margin-bottom:10px;align-items:start; border-radius:8px; transition: background 0.2s, box-shadow 0.2s;}
+.line-row{display:grid;grid-template-columns:30px 160px 1fr 70px 120px 120px 120px 45px;gap:10px;margin-bottom:10px;align-items:start; border-radius:8px; transition: background 0.2s, box-shadow 0.2s;}
 .line-row.dragging{opacity:0.6; background:var(--surface2); border: 1px dashed var(--accent); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); z-index: 50;}
 .drag-handle{cursor:grab; display:flex; align-items:center; justify-content:center; color:var(--border2); font-size:1.2rem; height:45px; user-select:none; transition:0.2s;}
 .drag-handle:hover{color:var(--accent);}
@@ -92,8 +92,22 @@ input.creating-mode {
 }
 input.creating-mode::placeholder { color: #86efac; font-weight: 400; }
 
-/* Estilo visual para la columna "Parcial" */
+/* --- ESTILOS DE FÓRMULAS TIPO EXCEL --- */
 .input-parcial { font-style: italic; }
+
+.formula-mode-active {
+    box-shadow: 0 0 0 2px var(--accent) !important;
+    border-color: var(--accent) !important;
+    background: #f8fafc !important;
+}
+
+@keyframes cellFlashAnim {
+    0% { box-shadow: inset 0 0 0 3px var(--green); background: var(--green-pale); }
+    100% { box-shadow: none; background: transparent; }
+}
+.cell-flash {
+    animation: cellFlashAnim 0.5s ease-out;
+}
 
 /* Estilo para el modo edición activo */
 .editing-mode-active {
@@ -346,10 +360,9 @@ td{padding:1rem;border-bottom:1px solid var(--border);font-size:0.9rem}
 
 <div id="toast">Notificación</div>
 
-
 <script>
 /**
- * MOTOR SISBANK PRO - RECONSTRUIDO CON EXPORTACIÓN UNIFICADA Y MAYOR JERÁRQUICO
+ * MOTOR SISBANK PRO - RECONSTRUIDO CON CÁLCULOS TIPO EXCEL, MAYOR JERÁRQUICO Y SELECCIÓN POR CLIC
  */
 let baseCatalog = []; 
 let dbCatalog = [];   
@@ -357,17 +370,77 @@ let journal = [];
 let templates = [];
 let editingEntryId = null; 
 
+// Control de Fórmulas y Clics
+let activeFormulaInput = null;
+
 // Variables para Libro Mayor
 let currentMayorCode = '';
 let currentMayorName = '';
-let expandedNodes = new Set(['1', '2', '3', '4', '5', '6', '7', '8', '9']); // Expandimos los Elementos base por defecto
+let expandedNodes = new Set(['1', '2', '3', '4', '5', '6', '7', '8', '9']); 
 
 const STORAGE_BASE_CUC = 'sisbank_base_cuc_db'; 
 const STORAGE_CUC = 'sisbank_cuc_db';
 const STORAGE_JOURNAL = 'sisbank_journal_db';
 const STORAGE_TEMPLATES = 'sisbank_templates_db';
 
-// --- UTILIDADES DE FORMATEO (UX) ---
+// --- UTILIDADES DE FORMATEO Y FÓRMULAS TIPO EXCEL ---
+
+// Validador estricto para Fórmulas Matemáticas (No Eval() para prevenir inyecciones)
+function safeMathEval(expr) {
+    const cleanExpr = expr.replace(/[^\d.\-+*/()]/g, ''); 
+    if (!cleanExpr) return 0;
+    try {
+        if (/^[0-9.\-+*/()]+$/.test(cleanExpr)) {
+            return new Function('return (' + cleanExpr + ')')() || 0; 
+        }
+    } catch(e) {
+        return 0; 
+    }
+    return 0;
+}
+
+// Obtener valor de celda mediante referencia (Ej: C1, D2)
+function getCellValueByRef(ref) {
+    const col = ref.charAt(0); 
+    const rowNum = parseInt(ref.substring(1)); 
+    if (isNaN(rowNum) || rowNum < 1) return 0;
+    
+    const rows = document.querySelectorAll('.line-row');
+    if (rowNum > rows.length) return 0;
+    
+    const row = rows[rowNum - 1];
+    let input = null;
+    if (col === 'C') input = row.querySelector('.input-debe');
+    else if (col === 'D') input = row.querySelector('.input-haber');
+    else if (col === 'E') input = row.querySelector('.input-parcial');
+    
+    if (!input) return 0;
+    return parseCurrency(input.value);
+}
+
+// Evaluar cadena de fórmula resolviendo referencias (Ej: =C1+D1)
+function evaluateFormula(formulaStr) {
+    if (!formulaStr || !formulaStr.startsWith('=')) return 0;
+    let expr = formulaStr.substring(1).toUpperCase();
+    expr = expr.replace(/[CDE][0-9]+/g, (match) => {
+        let val = getCellValueByRef(match);
+        return val.toString();
+    });
+    return safeMathEval(expr);
+}
+
+// Recalcular todas las celdas de la cuadrícula si hubo actualizaciones de dependencias
+function recalculateAllFormulas() {
+    for(let pass=0; pass<3; pass++){ 
+        document.querySelectorAll('.input-debe, .input-haber, .input-parcial').forEach(input => {
+            if (input.dataset.formula && input !== document.activeElement) {
+                let result = evaluateFormula(input.dataset.formula);
+                input.value = result !== 0 ? result.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '';
+            }
+        });
+    }
+}
+
 function parseCurrency(str) {
     if (!str) return 0;
     return parseFloat(str.toString().replace(/,/g, '')) || 0;
@@ -397,6 +470,136 @@ function formatCurrencyInput(input) {
 
     cursorPosition += (formattedValue.length - originalLength);
     input.setSelectionRange(cursorPosition, cursorPosition);
+}
+
+// --- INTERCEPTOR DE CLIC PARA REFERENCIAS (POINT AND CLICK) ---
+document.addEventListener('mousedown', (e) => {
+    // Si estamos editando una fórmula y el clic ocurrió sobre otra celda compatible
+    if (activeFormulaInput && document.activeElement === activeFormulaInput) {
+        const targetInput = e.target.closest('input[data-cell]');
+        
+        // Bloquear foco si hacemos clic en una celda válida distinta a la activa
+        if (targetInput && targetInput !== activeFormulaInput) {
+            e.preventDefault(); // Evita que se pierda el foco de activeFormulaInput
+
+            const cellRef = targetInput.dataset.cell;
+            const currentVal = activeFormulaInput.value;
+            const cursorPos = activeFormulaInput.selectionStart;
+
+            // Inserta la referencia donde esté el cursor (Ej: =C1+)
+            const valBefore = currentVal.substring(0, cursorPos);
+            const valAfter = currentVal.substring(cursorPos);
+            activeFormulaInput.value = valBefore + cellRef + valAfter;
+
+            // Restaura el cursor justo después de la referencia insertada
+            const newPos = cursorPos + cellRef.length;
+            activeFormulaInput.setSelectionRange(newPos, newPos);
+
+            // Dispara validación y formato
+            handleMathInput(activeFormulaInput);
+
+            // Feedback visual: Flash verde en la celda clicada
+            targetInput.classList.remove('cell-flash'); // reset en caso de clic rápido
+            void targetInput.offsetWidth; // trigger reflow
+            targetInput.classList.add('cell-flash');
+        }
+    }
+});
+
+// Controladores reactivos de Input (Soporte Fórmula =)
+function handleMathFocus(input) {
+    if (input.dataset.formula) {
+        input.value = input.dataset.formula; 
+    }
+    if (input.value.startsWith('=')) {
+        activeFormulaInput = input;
+        input.classList.add('formula-mode-active');
+    } else {
+        activeFormulaInput = null;
+        input.classList.remove('formula-mode-active');
+    }
+}
+
+function handleMathInput(input) {
+    let val = input.value;
+    if (val.startsWith('=')) {
+        activeFormulaInput = input; // Activar modo fórmula
+        input.classList.add('formula-mode-active');
+        
+        let cursorPosition = input.selectionStart;
+        let originalLength = input.value.length;
+        
+        let cleanVal = '=' + val.substring(1).toUpperCase().replace(/[^0-9.\-+*/()CDE]/g, '');
+        input.value = cleanVal; 
+        
+        cursorPosition += (cleanVal.length - originalLength);
+        input.setSelectionRange(cursorPosition, cursorPosition);
+    } else {
+        activeFormulaInput = null; // Desactivar modo fórmula
+        input.classList.remove('formula-mode-active');
+        
+        formatCurrencyInput(input);
+        input.dataset.formula = "";
+    }
+    recalculateAllFormulas();
+    calcTotals();
+}
+
+function handleMathBlur(input) {
+    activeFormulaInput = null;
+    input.classList.remove('formula-mode-active');
+    
+    let val = input.value.trim();
+    if (val.startsWith('=')) {
+        input.dataset.formula = val;
+        let result = evaluateFormula(val);
+        input.value = result !== 0 ? result.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '';
+    } else {
+        input.dataset.formula = "";
+        let result = parseCurrency(val);
+        input.value = result !== 0 ? result.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '';
+    }
+    recalculateAllFormulas();
+    calcTotals();
+}
+
+function handleMathKeydown(e, input) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        input.blur(); // El blur dispara inmediatamente la evaluación
+    }
+}
+
+function getNumericValue(input) {
+    let val = input.value.trim();
+    if (val.startsWith('=')) {
+        return evaluateFormula(val);
+    }
+    if (input.dataset.formula && val === '') {
+        return 0; 
+    }
+    return parseCurrency(val);
+}
+
+// Numeración y actualización dinámica de celdas (data-cell)
+function updateRowNumbers() {
+    document.querySelectorAll('.line-row').forEach((row, index) => {
+        const rowNum = index + 1;
+        const handle = row.querySelector('.drag-handle');
+        if(handle) {
+            handle.innerHTML = `<span style="font-size:0.65rem; color:var(--accent); font-weight:bold; margin-right:4px;">${rowNum}</span>⋮⋮`;
+        }
+        
+        // Asignación de ID Tipo Excel para Point and Click (E1, C1, D1)
+        const pInput = row.querySelector('.input-parcial');
+        const dInput = row.querySelector('.input-debe');
+        const hInput = row.querySelector('.input-haber');
+        if(pInput) pInput.dataset.cell = `E${rowNum}`;
+        if(dInput) dInput.dataset.cell = `C${rowNum}`;
+        if(hInput) hInput.dataset.cell = `D${rowNum}`;
+    });
+    recalculateAllFormulas(); 
+    calcTotals();
 }
 
 // --- INICIO ---
@@ -436,7 +639,7 @@ function initApp() {
     renderTemplateSelector(); 
     renderJournal();
     renderCatalog(); 
-    renderMayorTree(); // Renderizamos el árbol del Mayor de inmediato
+    renderMayorTree(); 
 }
 
 // --- LÓGICA DE BACKUPS OPERATIVOS (EXPORTAR/IMPORTAR) ---
@@ -558,7 +761,7 @@ function renderTemplateSelector() {
     selector.innerHTML = html;
 }
 
-// SISTEMA DE MODALES PERSONALIZADOS (Reemplazo de alert, prompt, confirm)
+// SISTEMA DE MODALES PERSONALIZADOS
 function showCustomModal(title, msg, type = 'alert', placeholder = '') {
     return new Promise(resolve => {
         const m = document.getElementById('custom-modal');
@@ -720,7 +923,7 @@ document.getElementById('csv-input').onchange = (e) => {
 };
 
 // --- LÓGICA VOUCHER ---
-function addLine(prefillCode = '', prefillName = '', prefillType = 'D', pVal = '', dVal = '', hVal = '') {
+function addLine(prefillCode = '', prefillName = '', prefillType = 'D', pVal = '', dVal = '', hVal = '', pForm = '', dForm = '', hForm = '') {
     const id = Date.now() + Math.random();
     const typeLabel = prefillType === 'H' ? 'HABER' : 'DEBE';
     const typeClass = prefillType === 'H' ? 'btn-toggle-type btn-haber' : 'btn-toggle-type btn-debe';
@@ -732,19 +935,24 @@ function addLine(prefillCode = '', prefillName = '', prefillType = 'D', pVal = '
             <div class="drag-handle" title="Arrastrar para reordenar">⋮⋮</div>
             <div class="autocomplete-wrapper">
                 <input type="text" class="input-code mono" placeholder="Código o Nombre..." autocomplete="off" 
-                    oninput="handleSearch(this)" onkeydown="handleKeydown(event, this)" onblur="handleBlur(this)" value="${prefillCode}">
+                    oninput="handleSearch(this)" onkeydown="handleSearchKeydown(event, this)" onblur="handleBlurSearch(this)" value="${prefillCode}">
                 <div class="suggestions"></div>
             </div>
             <input type="text" class="input-name" placeholder="Cuenta..." readonly style="background:var(--bg)"
                 onblur="finalizeCreation(this)" onkeydown="handleNameKeydown(event, this)" value="${prefillName}">
             <button type="button" class="${typeClass}" data-type="${prefillType}" onclick="toggleType(this)">${typeLabel}</button>
-            <input type="text" class="input-parcial text-right mono" placeholder="0.00" oninput="formatCurrencyInput(this); calcTotals()" value="${formatFmt(pVal)}">
-            <input type="text" class="input-debe text-right mono" placeholder="0.00" oninput="formatCurrencyInput(this); calcTotals()" value="${formatFmt(dVal)}">
-            <input type="text" class="input-haber text-right mono" placeholder="0.00" oninput="formatCurrencyInput(this); calcTotals()" value="${formatFmt(hVal)}">
-            <button class="btn btn-danger" onclick="document.getElementById('row-${id}').remove(); calcTotals()">✕</button>
+            <input type="text" class="input-parcial text-right mono" placeholder="E (Parcial)" data-formula="${pForm || ''}" value="${pForm || formatFmt(pVal)}" onfocus="handleMathFocus(this)" oninput="handleMathInput(this)" onblur="handleMathBlur(this)" onkeydown="handleMathKeydown(event, this)">
+            <input type="text" class="input-debe text-right mono" placeholder="C (Débito)" data-formula="${dForm || ''}" value="${dForm || formatFmt(dVal)}" onfocus="handleMathFocus(this)" oninput="handleMathInput(this)" onblur="handleMathBlur(this)" onkeydown="handleMathKeydown(event, this)">
+            <input type="text" class="input-haber text-right mono" placeholder="D (Crédito)" data-formula="${hForm || ''}" value="${hForm || formatFmt(hVal)}" onfocus="handleMathFocus(this)" oninput="handleMathInput(this)" onblur="handleMathBlur(this)" onkeydown="handleMathKeydown(event, this)">
+            <button class="btn btn-danger" onclick="this.closest('.line-row').remove(); updateRowNumbers();">✕</button>
         </div>
     `;
     document.getElementById('lines-container').insertAdjacentHTML('beforeend', html);
+    updateRowNumbers();
+    
+    if(pForm || dForm || hForm) {
+        setTimeout(() => calcTotals(), 50);
+    }
 }
 
 function toggleType(btn) {
@@ -822,7 +1030,7 @@ function handleSearch(el) {
     }
 }
 
-function handleKeydown(e, el) {
+function handleSearchKeydown(e, el) {
     const suggest = el.nextElementSibling;
     if (suggest.style.display === 'none') {
         if (e.key === 'Enter') {
@@ -859,7 +1067,7 @@ function handleKeydown(e, el) {
     }
 }
 
-function handleBlur(el) {
+function handleBlurSearch(el) {
     setTimeout(() => {
         const query = el.value.trim();
         const row = el.closest('.line-row');
@@ -970,7 +1178,7 @@ function finalizeCreation(el) {
         localStorage.setItem(STORAGE_CUC, JSON.stringify(dbCatalog));
         document.getElementById('db-status').textContent = `DB: ${dbCatalog.length} registros`;
         showToast("Cuenta creada y asociada correctamente.");
-        renderMayorTree(); // Refrescar el árbol visual si se crea una cuenta
+        renderMayorTree(); 
     }
 
     selectAcc(row.id, code, name);
@@ -996,8 +1204,8 @@ function selectAcc(rowId, code, name) {
 
 function calcTotals() {
     let d = 0, h = 0;
-    document.querySelectorAll('.input-debe').forEach(el => d += parseCurrency(el.value));
-    document.querySelectorAll('.input-haber').forEach(el => h += parseCurrency(el.value));
+    document.querySelectorAll('.input-debe').forEach(el => d += getNumericValue(el));
+    document.querySelectorAll('.input-haber').forEach(el => h += getNumericValue(el));
     
     document.getElementById('total-debe').textContent = d.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
     document.getElementById('total-haber').textContent = h.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
@@ -1005,7 +1213,6 @@ function calcTotals() {
     document.getElementById('total-diff').textContent = diff.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
     document.getElementById('total-diff').style.color = diff < 0.01 ? 'var(--green)' : 'var(--red)';
 }
-
 
 function editEntry(id) {
     const entry = journal.find(e => e.id === id);
@@ -1022,7 +1229,7 @@ function editEntry(id) {
 
     document.getElementById('lines-container').innerHTML = '';
     entry.lines.forEach(l => {
-        addLine(l.c, l.n, l.t, l.p, l.d, l.h);
+        addLine(l.c, l.n, l.t, l.p, l.d, l.h, l.p_formula, l.d_formula, l.h_formula);
     });
 
     calcTotals();
@@ -1068,12 +1275,19 @@ function postEntry() {
             hasErrors = true;
             row.querySelector('.input-code').classList.add('error');
         } else if (c && n) {
+            const pInput = row.querySelector('.input-parcial');
+            const dInput = row.querySelector('.input-debe');
+            const hInput = row.querySelector('.input-haber');
+
             lines.push({
                 c, n, 
                 t: typeBtn ? typeBtn.dataset.type : null,
-                p: parseCurrency(row.querySelector('.input-parcial').value),
-                d: parseCurrency(row.querySelector('.input-debe').value),
-                h: parseCurrency(row.querySelector('.input-haber').value)
+                p: getNumericValue(pInput),
+                p_formula: pInput.dataset.formula || null,
+                d: getNumericValue(dInput),
+                d_formula: dInput.dataset.formula || null,
+                h: getNumericValue(hInput),
+                h_formula: hInput.dataset.formula || null
             });
         }
     });
@@ -1214,7 +1428,6 @@ function renderMayorTable() {
     tbody.innerHTML = rowsHtml;
 }
 
-
 // --- RENDERIZADOS ---
 function renderJournal() {
     const tbody = document.getElementById('journal-tbody');
@@ -1323,6 +1536,26 @@ function renderCatalog() {
     }).join('');
 }
 
+// --- FÓRMULAS DE EXCEL ---
+function translateFormulaForExcel(formulaStr, entryLines) {
+    let expr = formulaStr.substring(1).toUpperCase();
+    expr = expr.replace(/([CDE])([0-9]+)/g, (match, col, rowStr) => {
+        const rowNum = parseInt(rowStr);
+        const lineInfo = entryLines[rowNum - 1];
+        if (!lineInfo || !lineInfo.excelRow) return "0"; 
+        
+        const excelRow = lineInfo.excelRow; 
+        
+        let excelCol = '';
+        if (col === 'C') excelCol = 'E'; // Débito -> Columna E en Excel
+        else if (col === 'D') excelCol = 'F'; // Crédito -> Columna F en Excel
+        else if (col === 'E') excelCol = 'D'; // Parcial -> Columna D en Excel
+        
+        return `${excelCol}${excelRow}`;
+    });
+    return expr;
+}
+
 // --- EXPORTACIÓN UNIFICADA (DIARIO Y MAYOR CON FÓRMULAS VIVAS) ---
 async function exportSistemaCompleto() {
     if(journal.length === 0) { showToast("Nada que exportar en el Diario."); return; }
@@ -1349,7 +1582,6 @@ async function exportSistemaCompleto() {
     wsDiario.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '0F1117' } };
     wsDiario.getRow(1).alignment = { horizontal: 'center', vertical: 'middle' };
 
-    // Mapa lógico de dónde queda cada dato en la hoja de Excel
     const diarioMap = {};
 
     journal.forEach((e, journalIndex) => {
@@ -1371,16 +1603,19 @@ async function exportSistemaCompleto() {
                 if (l.d > 0) isHaberSection = false;
             }
 
+            // Primer paso: Inyectar filas crudas o placeholders (para obtener número de fila)
             const r = wsDiario.addRow({ 
                 f: index === 0 ? e.date : '', 
                 c: l.c, 
                 n: l.n, 
-                p: l.p > 0 ? l.p : null,
-                d: l.d > 0 ? l.d : null, 
-                h: l.h > 0 ? l.h : null 
+                p: null,
+                d: null, 
+                h: null 
             });
 
             if (index === 0) firstLineRow = r.number;
+
+            l.excelRow = r.number;
 
             entryData.lines.push({
                 c: l.c,
@@ -1407,7 +1642,21 @@ async function exportSistemaCompleto() {
             
             r.getCell('c').alignment = { horizontal: 'center' };
             r.getCell('f').alignment = { horizontal: 'center' };
+        });
 
+        // Segundo paso: Evaluamos las celdas contables, inyectando fórmulas traducidas
+        e.lines.forEach((l) => {
+            const r = wsDiario.getRow(l.excelRow);
+
+            if (l.p_formula) r.getCell('p').value = { formula: translateFormulaForExcel(l.p_formula, e.lines), result: l.p };
+            else if (l.p > 0) r.getCell('p').value = l.p;
+
+            if (l.d_formula) r.getCell('d').value = { formula: translateFormulaForExcel(l.d_formula, e.lines), result: l.d };
+            else if (l.d > 0) r.getCell('d').value = l.d;
+
+            if (l.h_formula) r.getCell('h').value = { formula: translateFormulaForExcel(l.h_formula, e.lines), result: l.h };
+            else if (l.h > 0) r.getCell('h').value = l.h;
+            
             ['p', 'd', 'h'].forEach(col => {
                 const cell = r.getCell(col);
                 if(cell.value) cell.numFmt = '#,##0.00';
@@ -1426,22 +1675,20 @@ async function exportSistemaCompleto() {
     });
 
 
-
     // ----------------------------------------------------
     // HOJA 2: LIBRO MAYOR (Vinculado por Fórmulas)
     // ----------------------------------------------------
     const wsMayor = wb.addWorksheet('Libro Mayor');
     
     wsMayor.columns = [
-        { width: 12 }, // Fecha (A)
-        { width: 15 }, // Asiento (B)
-        { width: 45 }, // Concepto (C)
-        { width: 15 }, // Débito (D)
-        { width: 15 }, // Crédito (E)
-        { width: 15 }  // Saldo (F)
+        { width: 12 }, 
+        { width: 15 }, 
+        { width: 45 }, 
+        { width: 15 }, 
+        { width: 15 }, 
+        { width: 15 }  
     ];
 
-    // FILTRADO CRÍTICO: Solo cuentas con actividad real (Débito > 0 o Crédito > 0)
     const accountsWithActivity = new Set();
     journal.forEach(e => e.lines.forEach(l => {
         if (l.d > 0 || l.h > 0) {
@@ -1449,20 +1696,17 @@ async function exportSistemaCompleto() {
         }
     }));
     
-    // Ordenarlas jerárquicamente
     const sortedCodes = Array.from(accountsWithActivity).sort((a, b) => a.localeCompare(b));
 
     sortedCodes.forEach(code => {
         const acc = dbCatalog.find(x => x.c === code) || { c: code, n: 'Cuenta Desconocida' };
         
-        // Encabezado de la Cuenta
         const titleRow = wsMayor.addRow([`NOMBRE DE CUENTA: ${acc.c} - ${acc.n.toUpperCase()}`]);
         titleRow.font = { bold: true, size: 12 };
         wsMayor.mergeCells(`A${titleRow.number}:F${titleRow.number}`);
         
         wsMayor.addRow([]);
 
-        // Encabezados de Tabla del Mayor
         const headerRow = wsMayor.addRow(['FECHA', 'ASIENTO', 'CONCEPTO', 'DÉBITO', 'CRÉDITO', 'SALDO']);
         headerRow.font = { bold: true, color: { argb: 'FFFFFF' } };
         headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '0F1117' } };
@@ -1473,19 +1717,17 @@ async function exportSistemaCompleto() {
 
         journal.forEach((entry, idx) => {
             const eMap = diarioMap[entry.id];
-            // Filtrar SOLO las líneas de ESTE asiento para ESTA cuenta que tengan valores reales
             const linesForAcc = eMap.lines.filter(l => l.c === code && (l.d > 0 || l.h > 0));
             
             if (linesForAcc.length > 0) {
                 linesForAcc.forEach(l => {
-                    // Celdas conectadas vía Fórmulas Relativas a la Hoja del Diario
                     const r = wsMayor.addRow([
-                        { formula: `='Libro Diario'!A${eMap.firstLineRow}` }, // F1: Fecha
-                        { formula: `='Libro Diario'!C${eMap.numRow}` },       // F2: Num Asiento
-                        { formula: `='Libro Diario'!C${eMap.glosaRow}` },     // F3: Concepto (Glosa)
-                        { formula: `='Libro Diario'!E${l.row}` },             // F4: Débito
-                        { formula: `='Libro Diario'!F${l.row}` },             // F5: Crédito
-                        0 // Placeholder para Saldo (F6)
+                        { formula: `='Libro Diario'!A${eMap.firstLineRow}` }, 
+                        { formula: `='Libro Diario'!C${eMap.numRow}` },       
+                        { formula: `='Libro Diario'!C${eMap.glosaRow}` },     
+                        { formula: `='Libro Diario'!E${l.row}` },             
+                        { formula: `='Libro Diario'!F${l.row}` },             
+                        0 
                     ]);
                     
                     r.getCell(1).alignment = { horizontal: 'center' };
@@ -1494,7 +1736,6 @@ async function exportSistemaCompleto() {
                     r.getCell(5).numFmt = '#,##0.00';
                     r.getCell(6).numFmt = '#,##0.00';
 
-                    // FÓRMULA DEL SALDO ACUMULATIVO
                     if (currentDataRow === startDataRow) {
                         r.getCell(6).value = { formula: `D${currentDataRow}-E${currentDataRow}` };
                     } else {
@@ -1505,7 +1746,6 @@ async function exportSistemaCompleto() {
             }
         });
 
-        // Espaciadores entre cuentas en el Excel
         wsMayor.addRow([]);
         wsMayor.addRow([]);
     });
@@ -1555,6 +1795,7 @@ function initDragAndDrop() {
         if(draggedRow) {
             draggedRow.classList.remove('dragging');
             draggedRow = null;
+            updateRowNumbers();
         }
     });
 
