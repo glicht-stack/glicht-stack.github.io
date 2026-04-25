@@ -237,7 +237,7 @@ td{padding:1rem;border-bottom:1px solid var(--border);font-size:0.9rem}
                     <button class="btn btn-outline" onclick="document.getElementById('import-backup-input').click()" title="Importar Backup">📂 Importar</button>
                     <input type="file" id="import-backup-input" accept=".json" style="display:none" onchange="handleImportBackupChange(event)">
                     
-                    <button class="btn btn-outline" onclick="resetDB()">Limpiar BD</button>
+                    <button class="btn btn-outline" onclick="resetDB()">Limpiar Sesión y BD</button>
                     <!-- EXPORTACIÓN UNIFICADA -->
                     <button class="btn btn-primary" onclick="exportSistemaCompleto()">⬇ Exportar Sistema Completo</button>
                 </div>
@@ -388,7 +388,7 @@ td{padding:1rem;border-bottom:1px solid var(--border);font-size:0.9rem}
 
 <script>
 /**
- * MOTOR SISBANK PRO - RECONSTRUIDO CON CÁLCULOS EXCEL, MAYOR JERÁRQUICO, SUPABASE Y AUTH GATE
+ * MOTOR SISBANK PRO - RECONSTRUIDO CON POLLING AUTOMÁTICO PARA ENTORNOS RESTRINGIDOS
  */
 
 // --- CONFIGURACIÓN GLOBALES DE ACCESO Y SUPABASE ---
@@ -396,7 +396,11 @@ const SUPABASE_URL = 'https://erynbyvxuxszanexbusr.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_QW71DJJbDdrbBQEvV4m4Ww_1ob06yJC';
 
 let supabaseClient = null;
-let modoApp = "local"; // Por defecto iniciamos asumiendo local
+let modoApp = "local"; 
+let pollingInterval = null; 
+let lastJournalSnapshot = ""; 
+
+window.pollingActivo = false;
 
 // --- UTILIDAD DE ID SEGURO ---
 function generateUUID() {
@@ -433,15 +437,17 @@ const STORAGE_CUC = 'sisbank_cuc_db';
 const STORAGE_JOURNAL = 'sisbank_journal_db';
 const STORAGE_TEMPLATES = 'sisbank_templates_db';
 
-// --- INICIO DE LA APLICACIÓN (GATE) ---
+// --- INICIO DE LA APLICACIÓN (GATE & PERSISTENCIA) ---
 window.onload = () => {
-    // 1. Cargamos datos locales en memoria preventivamente
     const storedBase = localStorage.getItem(STORAGE_BASE_CUC);
     const storedCUC = localStorage.getItem(STORAGE_CUC);
     const storedJournal = localStorage.getItem(STORAGE_JOURNAL);
     const storedTemplates = localStorage.getItem(STORAGE_TEMPLATES);
 
-    if(storedJournal) journal = JSON.parse(storedJournal);
+    if(storedJournal) {
+        journal = JSON.parse(storedJournal);
+        lastJournalSnapshot = storedJournal;
+    }
     if(storedTemplates) templates = JSON.parse(storedTemplates);
 
     if(storedCUC) {
@@ -454,15 +460,40 @@ window.onload = () => {
         }
     }
 
-    // 2. Mostramos siempre la puerta de acceso primero
-    document.getElementById('auth-overlay').style.display = 'flex';
+    const savedMode = localStorage.getItem('sisbank_auth_mode');
+    if (savedMode === 'sync') {
+        modoApp = "sync";
+        supabaseClient = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+        document.getElementById('auth-overlay').style.display = 'none';
+        
+        const badge = document.getElementById('mode-badge');
+        badge.textContent = "Modo Sincronizado ☁️";
+        badge.style.color = "var(--accent)";
+        badge.style.background = "var(--accent-pale)";
+        
+        proceedAfterAuth();
+    } else if (savedMode === 'local') {
+        modoApp = "local";
+        supabaseClient = null;
+        document.getElementById('auth-overlay').style.display = 'none';
+        
+        const badge = document.getElementById('mode-badge');
+        badge.textContent = "Modo Local 💻";
+        badge.style.color = "var(--green)";
+        badge.style.background = "var(--green-pale)";
+
+        proceedAfterAuth();
+    } else {
+        document.getElementById('auth-overlay').style.display = 'flex';
+    }
 };
 
-// --- LOGICA DE AUTENTICACIÓN ---
+// --- LÓGICA DE AUTENTICACIÓN ---
 function authSync() {
     const pass = document.getElementById('auth-pass').value;
     if (pass === 'holamundo235') {
         modoApp = "sync";
+        localStorage.setItem('sisbank_auth_mode', 'sync');
         supabaseClient = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
         document.getElementById('auth-overlay').style.display = 'none';
         
@@ -481,8 +512,12 @@ function authSync() {
 
 function authLocal() {
     modoApp = "local";
+    localStorage.setItem('sisbank_auth_mode', 'local');
     supabaseClient = null;
     document.getElementById('auth-overlay').style.display = 'none';
+    
+    if (pollingInterval) clearInterval(pollingInterval);
+    window.pollingActivo = false;
     
     const badge = document.getElementById('mode-badge');
     badge.textContent = "Modo Local 💻";
@@ -511,7 +546,9 @@ function initApp() {
     renderMayorTree(); 
 
     if (modoApp === "sync") {
-        syncSupabase();
+        syncSupabase(true).then(() => {
+            iniciarPollingSeguro(); 
+        });
     } else {
         showToast("Iniciado en Modo Local. No se sincronizarán datos con la nube.");
     }
@@ -520,8 +557,44 @@ function initApp() {
     initJournalDragAndDrop(); 
 }
 
-// --- SINCRONIZACIÓN INICIAL CON SUPABASE ---
-async function syncSupabase() {
+// --- SUPABASE POLLING (SINCRONIZACIÓN AUTOMÁTICA SILENCIOSA) ---
+function iniciarPollingSeguro() {
+    if (window.pollingActivo) return;
+    window.pollingActivo = true;
+
+    if (pollingInterval) clearInterval(pollingInterval);
+    console.log("Iniciando modo polling automático seguro (4s)");
+    
+    pollingInterval = setInterval(() => {
+        if (modoApp === "sync") {
+            try {
+                recargarAsientos();
+            } catch (error) {
+                console.error("Error en polling:", error);
+            }
+        }
+    }, 4000);
+}
+
+function iniciarPolling() {
+    if (window.pollingActivo) return;
+    window.pollingActivo = true;
+
+    if (pollingInterval) clearInterval(pollingInterval);
+    console.log("Iniciando modo polling automático (4s)");
+    
+    pollingInterval = setInterval(() => {
+        if (modoApp === "sync") {
+            recargarAsientos();
+        }
+    }, 4000);
+}
+
+function recargarAsientos() {
+    syncSupabase(false); 
+}
+
+async function syncSupabase(showMsg = true) {
     if (modoApp !== "sync" || !supabaseClient) return;
     
     try {
@@ -571,16 +644,22 @@ async function syncSupabase() {
                 };
             });
 
-            journal = remoteJournal;
-            localStorage.setItem(STORAGE_JOURNAL, JSON.stringify(journal));
+            const currentSnapshot = JSON.stringify(remoteJournal);
             
-            renderJournal();
-            if(currentMayorCode) renderMayorTable();
-            showToast("Sincronización en la nube exitosa.");
+            // OPTIMIZACIÓN: Solo actualizar UI si hay cambios reales en la base de datos
+            if (currentSnapshot !== lastJournalSnapshot) {
+                journal = remoteJournal;
+                lastJournalSnapshot = currentSnapshot;
+                localStorage.setItem(STORAGE_JOURNAL, currentSnapshot);
+                
+                renderJournal();
+                if(currentMayorCode) renderMayorTable();
+                if (showMsg) showToast("Sincronización en la nube exitosa.");
+            }
         }
     } catch (e) {
         console.error("Supabase Sync Error:", e);
-        showToast("Error de conexión. Trabajando con respaldo local de forma temporal.");
+        if (showMsg) showToast("Error de conexión. Trabajando con respaldo local de forma temporal.");
     }
 }
 
@@ -880,9 +959,10 @@ async function importOperationalData(data) {
     dbCatalog = combinedCatalog;
     journal = data.asientos;
     templates = data.plantillas;
-
+    
+    lastJournalSnapshot = JSON.stringify(journal);
     localStorage.setItem(STORAGE_CUC, JSON.stringify(dbCatalog));
-    localStorage.setItem(STORAGE_JOURNAL, JSON.stringify(journal));
+    localStorage.setItem(STORAGE_JOURNAL, lastJournalSnapshot);
     localStorage.setItem(STORAGE_TEMPLATES, JSON.stringify(templates));
 
     if (modoApp === "sync") {
@@ -1672,7 +1752,6 @@ async function postEntry() {
             showToast(editingEntryId ? "Actualizado localmente (Error en nube)." : "Posteado localmente (Error en nube).");
         }
     } else {
-        // MODO LOCAL PURO
         if (!finalId) {
             finalId = generateUUID();
             finalOrden = journal.reduce((max, e) => Math.max(max, e.orden || 0), 0) + 1;
@@ -1695,7 +1774,8 @@ async function postEntry() {
         journal.push(entryData);
     }
     
-    localStorage.setItem(STORAGE_JOURNAL, JSON.stringify(journal));
+    lastJournalSnapshot = JSON.stringify(journal);
+    localStorage.setItem(STORAGE_JOURNAL, lastJournalSnapshot);
     
     cancelEdit(false);
     renderJournal();
@@ -1831,7 +1911,8 @@ async function updateJournalOrderFromDOM() {
     });
 
     if (entriesToUpdate.length > 0) {
-        localStorage.setItem(STORAGE_JOURNAL, JSON.stringify(journal));
+        lastJournalSnapshot = JSON.stringify(journal);
+        localStorage.setItem(STORAGE_JOURNAL, lastJournalSnapshot);
         
         if (modoApp === "sync" && supabaseClient) {
             try {
@@ -1865,7 +1946,8 @@ async function deleteEntry(id) {
             journal = journal.filter(e => e.id !== id); 
             
             if (journal.length !== initialLength) {
-                localStorage.setItem(STORAGE_JOURNAL, JSON.stringify(journal)); 
+                lastJournalSnapshot = JSON.stringify(journal);
+                localStorage.setItem(STORAGE_JOURNAL, lastJournalSnapshot); 
                 renderJournal(); 
                 if(currentMayorCode) renderMayorTable(); 
                 
@@ -1888,7 +1970,6 @@ async function deleteEntry(id) {
     }
 }
 
-// --- LÓGICA DE ÁRBOL DEL MAYOR Y SELECCIÓN ---
 function toggleNode(e, code) {
     e.stopPropagation();
     if (expandedNodes.has(code)) expandedNodes.delete(code);
@@ -2003,7 +2084,6 @@ function renderMayorTable() {
     tbody.innerHTML = rowsHtml;
 }
 
-// --- FÓRMULAS DE EXCEL ---
 function translateFormulaForExcel(formulaStr, entryLines) {
     let expr = formulaStr.substring(1).toUpperCase();
     expr = expr.replace(/([CDE])([0-9]+)/g, (match, col, rowStr) => {
@@ -2023,7 +2103,6 @@ function translateFormulaForExcel(formulaStr, entryLines) {
     return expr;
 }
 
-// --- EXPORTACIÓN UNIFICADA ---
 async function exportSistemaCompleto() {
     if(journal.length === 0) { showToast("Nada que exportar en el Diario."); return; }
     
@@ -2251,15 +2330,6 @@ function showToast(m) {
     setTimeout(() => t.classList.remove('show'), 3000);
 }
 
-async function resetDB() {
-    const confirmed = await showCustomModal('Limpiar Base de Datos', '¿Estás seguro de borrar todas las cuentas, asientos y plantillas?', 'confirm');
-    if(confirmed) {
-        localStorage.clear();
-        location.reload();
-    }
-}
-
-// --- MOTOR DRAG AND DROP ---
 function initDragAndDrop() {
     const container = document.getElementById('lines-container');
     let draggedRow = null;
