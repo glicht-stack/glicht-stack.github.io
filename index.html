@@ -701,10 +701,14 @@ async function syncSupabase(showMsg = true) {
             mapaCuentas = {};
             mapaCuentasInverso = {};
             let catalogoModificado = false;
+            
+            // 🚀 SOLUCIÓN: Crear un registro de las cuentas que SÍ existen en Supabase
+            const codigosSupabase = new Set();
 
             cuentas.forEach(c => {
                 mapaCuentas[c.codigo] = c.id;
                 mapaCuentasInverso[c.id] = c.codigo;
+                codigosSupabase.add(c.codigo); // 🚀 Registrar cuenta oficial
 
                 // Integrar silenciosamente si es nueva
                 if (!dbCatalog.some(x => x.c === c.codigo)) {
@@ -716,6 +720,14 @@ async function syncSupabase(showMsg = true) {
                     catalogoModificado = true;
                 }
             });
+
+            // 🚀 SOLUCIÓN: Limpiar el catálogo local de cuentas eliminadas en Supabase
+            const cantidadPrevia = dbCatalog.length;
+            dbCatalog = dbCatalog.filter(acc => codigosSupabase.has(acc.c));
+            
+            if (dbCatalog.length !== cantidadPrevia) {
+                catalogoModificado = true; // Si se borró algo, avisamos para refrescar la UI
+            }
 
             if (catalogoModificado) {
                 dbCatalog.sort((a, b) => a.c.localeCompare(b.c)); // Orden jerárquico
