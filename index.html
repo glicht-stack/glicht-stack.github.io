@@ -65,7 +65,6 @@ main{max-width:1400px;margin:2rem auto;padding:0 1.5rem}
 .entry-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1.5rem;margin-bottom:1.5rem}
 .form-group label{display:block;font-size:0.75rem;font-weight:700;margin-bottom:0.5rem;color:var(--ink2)}
 
-/* Se ajustaron las columnas de la fila para hacer espacio al botón de arrastre (drag-handle) */
 .line-row{display:grid;grid-template-columns:30px 160px 1fr 70px 120px 120px 120px 45px;gap:10px;margin-bottom:10px;align-items:start; border-radius:8px; transition: background 0.2s, box-shadow 0.2s;}
 .line-row.dragging{opacity:0.6; background:var(--surface2); border: 1px dashed var(--accent); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); z-index: 50;}
 .drag-handle{cursor:grab; display:flex; align-items:center; justify-content:center; color:var(--border2); font-size:1.2rem; height:45px; user-select:none; transition:0.2s;}
@@ -112,7 +111,6 @@ input.creating-mode::placeholder { color: #86efac; font-weight: 400; }
     animation: cellFlashAnim 0.5s ease-out;
 }
 
-/* Estilo para el modo edición activo */
 .editing-mode-active {
     border: 2px dashed var(--accent) !important;
     background: #fdfeff !important;
@@ -402,6 +400,13 @@ let lastJournalSnapshot = "";
 
 window.pollingActivo = false;
 
+// --- FUNCIÓN DE ORDENAMIENTO DE ASIENTOS (AISLADA) ---
+function recalcularOrdenLocal() {
+    journal.forEach((asiento, index) => {
+        asiento.orden = index + 1;
+    });
+}
+
 // --- UTILIDAD DE ID SEGURO ---
 function generateUUID() {
     if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -527,12 +532,104 @@ function authLocal() {
     proceedAfterAuth();
 }
 
-function proceedAfterAuth() {
+// 🚀 SOLUCIÓN PAGINACIÓN: Extraer TODAS las cuentas sin importar el límite de 1000
+async function fetchTodoElCatalogo() {
+    let todos = [];
+    let limite = 1000;
+    let inicio = 0;
+    let fin = limite - 1;
+    let hayMas = true;
+
+    while (hayMas) {
+        const { data, error } = await supabaseClient
+            .from("cuentas")
+            .select("id, codigo, nombre, parent_id")
+            .range(inicio, fin);
+
+        if (error) {
+            console.error("Error obteniendo catálogo paginado:", error);
+            return null;
+        }
+
+        if (data && data.length > 0) {
+            todos = todos.concat(data);
+            inicio += limite;
+            fin += limite;
+            if (data.length < limite) hayMas = false; // Si trae menos del límite, es la última página
+        } else {
+            hayMas = false;
+        }
+    }
+    return todos;
+}
+
+async function cargarCatalogoDesdeSupabase() {
+    try {
+        const data = await fetchTodoElCatalogo(); // 🚀 Reemplaza la consulta directa con límite
+            
+        if (!data || data.length === 0) {
+            console.warn("No hay cuentas en Supabase");
+            return false;
+        }
+
+        // Mapear los datos de Supabase al formato local del catálogo (c: código, n: nombre, l: nivel)
+        dbCatalog = data.map(acc => {
+            return { 
+                c: acc.codigo, 
+                n: acc.nombre, 
+                l: acc.codigo.length <= 1 ? 1 : (acc.codigo.length <= 2 ? 2 : (acc.codigo.length <= 4 ? 3 : 4))
+            };
+        }).sort((a, b) => a.c.length - b.c.length);
+        
+        baseCatalog = [...dbCatalog];
+        
+        // Alimentar mapas de consulta rápida
+        mapaCuentas = {};
+        mapaCuentasInverso = {};
+        data.forEach(c => {
+            mapaCuentas[c.codigo] = c.id;
+            mapaCuentasInverso[c.id] = c.codigo;
+        });
+
+        // Guardar persistencia para evitar descargas dobles futuras si se recarga
+        localStorage.setItem(STORAGE_BASE_CUC, JSON.stringify(baseCatalog));
+        localStorage.setItem(STORAGE_CUC, JSON.stringify(dbCatalog));
+
+        console.log("Catálogo cargado desde Supabase:", dbCatalog.length);
+        return true;
+    } catch (err) {
+        console.error("Error inesperado cargando catálogo:", err);
+        return false;
+    }
+}
+
+async function proceedAfterAuth() {
     if (dbCatalog.length > 0) {
         initApp();
-    } else {
+        return;
+    } 
+    
+    if (modoApp === "sync" && supabaseClient) {
         document.getElementById('setup-overlay').style.display = 'flex';
+        const uploadZone = document.querySelector('.upload-zone');
+        const originalUploadHTML = uploadZone.innerHTML;
+        
+        // Feedback visual temporal
+        uploadZone.innerHTML = `<div style="font-size:3rem">☁️</div><p>Sincronizando catálogo con Supabase...</p>`;
+        
+        const ok = await cargarCatalogoDesdeSupabase();
+        if (ok) {
+            console.log("Modo sync: CSV omitido");
+            uploadZone.innerHTML = originalUploadHTML; // Restauramos por si acaso
+            initApp();
+            return; // 🔥 evita pedir CSV
+        } else {
+            console.warn("Fallback a CSV");
+            uploadZone.innerHTML = originalUploadHTML; // Restauramos la zona para subir CSV
+        }
     }
+
+    document.getElementById('setup-overlay').style.display = 'flex';
 }
 
 function initApp() {
@@ -557,7 +654,7 @@ function initApp() {
     initJournalDragAndDrop(); 
 }
 
-// --- SUPABASE POLLING (SINCRONIZACIÓN AUTOMÁTICA SILENCIOSA) ---
+// --- SUPABASE POLLING ---
 function iniciarPollingSeguro() {
     if (window.pollingActivo) return;
     window.pollingActivo = true;
@@ -598,14 +695,36 @@ async function syncSupabase(showMsg = true) {
     if (modoApp !== "sync" || !supabaseClient) return;
     
     try {
-        const { data: cuentas, error: errC } = await supabaseClient.from("cuentas").select("id, codigo, nombre");
+        // 🚀 SOLUCIÓN: Usar la paginación para traer el catálogo completo en el polling
+        const cuentas = await fetchTodoElCatalogo();
         if (cuentas) {
             mapaCuentas = {};
             mapaCuentasInverso = {};
+            let catalogoModificado = false;
+
             cuentas.forEach(c => {
                 mapaCuentas[c.codigo] = c.id;
                 mapaCuentasInverso[c.id] = c.codigo;
+
+                // Integrar silenciosamente si es nueva
+                if (!dbCatalog.some(x => x.c === c.codigo)) {
+                    dbCatalog.push({
+                        c: c.codigo,
+                        n: c.nombre,
+                        l: c.codigo.length <= 1 ? 1 : (c.codigo.length <= 2 ? 2 : (c.codigo.length <= 4 ? 3 : 4))
+                    });
+                    catalogoModificado = true;
+                }
             });
+
+            if (catalogoModificado) {
+                dbCatalog.sort((a, b) => a.c.localeCompare(b.c)); // Orden jerárquico
+                localStorage.setItem(STORAGE_CUC, JSON.stringify(dbCatalog));
+                const statusEl = document.getElementById('db-status');
+                if (statusEl) statusEl.textContent = `DB: ${dbCatalog.length} registros`;
+                renderCatalog();
+                renderMayorTree();
+            }
         }
 
         const { data: asientos, error: errA } = await supabaseClient.from('asientos').select('*').order('orden', { ascending: true });
@@ -646,7 +765,6 @@ async function syncSupabase(showMsg = true) {
 
             const currentSnapshot = JSON.stringify(remoteJournal);
             
-            // OPTIMIZACIÓN: Solo actualizar UI si hay cambios reales en la base de datos
             if (currentSnapshot !== lastJournalSnapshot) {
                 journal = remoteJournal;
                 lastJournalSnapshot = currentSnapshot;
@@ -663,7 +781,7 @@ async function syncSupabase(showMsg = true) {
     }
 }
 
-// --- UTILIDADES DE FORMATEO Y FÓRMULAS TIPO EXCEL ---
+// --- UTILIDADES DE FORMATEO Y FÓRMULAS ---
 function safeMathEval(expr) {
     const cleanExpr = expr.replace(/[^\d.\-+*/()]/g, ''); 
     if (!cleanExpr) return 0;
@@ -920,7 +1038,7 @@ async function importOperationalData(data) {
         return;
     }
 
-    const confirmMsg = '¿Está seguro de importar este backup? Esto reemplazará TODOS los asientos, plantillas y cuentas creadas manualmente. (El catálogo base se mantendrá intacto).';
+    const confirmMsg = '¿Está seguro de importar este backup? Esto reemplazará TODOS los asientos, plantillas y cuentas creadas manualmente.';
     const confirm = await showCustomModal('Importar Backup', confirmMsg, 'confirm');
     if (!confirm) return;
 
@@ -1244,6 +1362,7 @@ document.getElementById('csv-input').onchange = async (e) => {
                     
                     uploadZone.innerHTML = originalUploadHTML;
                     uploadZone.style.pointerEvents = 'auto';
+                    
                     initApp();
                 }
             } else {
@@ -1774,6 +1893,10 @@ async function postEntry() {
         journal.push(entryData);
     }
     
+    // --- INTEGRACIÓN: RECALCULAR ORDEN LOCAL LUEGO DE MODIFICAR ARRAY ---
+    recalcularOrdenLocal();
+    // -------------------------------------------------------------------
+    
     lastJournalSnapshot = JSON.stringify(journal);
     localStorage.setItem(STORAGE_JOURNAL, lastJournalSnapshot);
     
@@ -1824,6 +1947,7 @@ function renderJournal() {
             `;
         });
         
+        // Aquí se asegura que se muestra entry.orden visualmente en el asiento
         rowsHtml += `
             <tr style="background:var(--surface2); border-bottom: 2px solid var(--border2)">
                 <td class="text-center drag-handle-journal" title="Arrastrar para reordenar asiento">⋮⋮</td>
@@ -1910,6 +2034,13 @@ async function updateJournalOrderFromDOM() {
         }
     });
 
+    // --- INTEGRACIÓN: RECALCULAR ORDEN LOCAL LUEGO DE REORDENAMIENTO MANUAL ---
+    // Ordenamos el array internamente por el nuevo orden para que recalcular coincida.
+    journal.sort((a, b) => (a.orden || 0) - (b.orden || 0));
+    recalcularOrdenLocal();
+    renderJournal();
+    // --------------------------------------------------------------------------
+
     if (entriesToUpdate.length > 0) {
         lastJournalSnapshot = JSON.stringify(journal);
         localStorage.setItem(STORAGE_JOURNAL, lastJournalSnapshot);
@@ -1944,6 +2075,10 @@ async function deleteEntry(id) {
         if (confirmed) {
             const initialLength = journal.length;
             journal = journal.filter(e => e.id !== id); 
+            
+            // --- INTEGRACIÓN: RECALCULAR ORDEN LOCAL LUEGO DE ELIMINAR ---
+            recalcularOrdenLocal();
+            // -------------------------------------------------------------
             
             if (journal.length !== initialLength) {
                 lastJournalSnapshot = JSON.stringify(journal);
