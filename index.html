@@ -273,7 +273,10 @@ td{padding:1rem;border-bottom:1px solid var(--border);font-size:0.9rem}
         </div>
 
         <div class="card">
-            <div class="card-header"><h3>Asientos Recientes</h3></div>
+            <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+                <h3 style="margin:0;">Asientos Recientes</h3>
+                <button id="btn-toggle-all" class="btn btn-outline" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;" onclick="toggleAllEntries()">Contraer Todo</button>
+            </div>
             <div style="overflow-x:auto">
                 <table id="journal-table">
                     <thead>
@@ -424,6 +427,7 @@ let dbCatalog = [];
 let journal = [];
 let templates = [];
 let editingEntryId = null; 
+let collapsedEntries = new Set(); // 🚀 Nuevo estado para UX plegable, aislado
 
 // Mapas de UUIDs para conexión con base de datos
 let mapaCuentas = {};
@@ -764,12 +768,12 @@ async function syncSupabase(showMsg = true) {
                             c: codigoCuenta,
                             n: dbCatalog.find(x => x.c === codigoCuenta)?.n || localLine?.n || 'Cuenta recuperada',
                             t: localLine?.t || (m.haber > 0 ? 'H' : 'D'),
-                            p: localLine?.p || 0,
+                            p: m.parcial !== undefined && m.parcial !== null ? m.parcial : (localLine?.p || 0),
                             d: m.debe || 0,
                             h: m.haber || 0,
-                            p_formula: localLine?.p_formula || null,
-                            d_formula: localLine?.d_formula || null,
-                            h_formula: localLine?.h_formula || null
+                            p_formula: m.parcial_formula || localLine?.p_formula || null,
+                            d_formula: m.debe_formula || localLine?.d_formula || null,
+                            h_formula: m.haber_formula || localLine?.h_formula || null
                         };
                     })
                 };
@@ -1866,7 +1870,11 @@ async function postEntry() {
                 asiento_id: finalId,
                 cuenta_id: mapaCuentas[l.c], 
                 debe: l.d,
-                haber: l.h
+                haber: l.h,
+                parcial: l.p || 0,
+                parcial_formula: l.p_formula || null,
+                debe_formula: l.d_formula || null,
+                haber_formula: l.h_formula || null
             }));
 
             const { error: errM } = await supabaseClient.from('movimientos').insert(movsToInsert);
@@ -1917,10 +1925,51 @@ async function postEntry() {
     if(currentMayorCode) renderMayorTable(); 
 }
 
+// --- UX ASIENTOS PLEGABLES ---
+function toggleJournalEntry(id, e) {
+    // Si hace clic en un botón o en el control de arrastre, no plegar
+    if (e && (e.target.closest('button') || e.target.classList.contains('drag-handle-journal'))) return;
+    
+    const tbody = document.querySelector(`tbody[data-id="${id}"]`);
+    if (!tbody) return;
+
+    if (collapsedEntries.has(id)) {
+        collapsedEntries.delete(id);
+        tbody.querySelectorAll('.entry-detail-row').forEach(tr => tr.style.display = '');
+        const icon = tbody.querySelector('.toggle-icon');
+        if (icon) icon.textContent = '▼';
+        tbody.querySelector('.entry-summary-row').style.borderBottom = '1px solid var(--border)';
+    } else {
+        collapsedEntries.add(id);
+        tbody.querySelectorAll('.entry-detail-row').forEach(tr => tr.style.display = 'none');
+        const icon = tbody.querySelector('.toggle-icon');
+        if (icon) icon.textContent = '▶';
+        tbody.querySelector('.entry-summary-row').style.borderBottom = '2px solid var(--border2)';
+    }
+    updateToggleAllBtn();
+}
+
+function toggleAllEntries() {
+    if (collapsedEntries.size > 0) {
+        collapsedEntries.clear(); // Expandir todos
+    } else {
+        journal.forEach(e => collapsedEntries.add(e.id)); // Contraer todos
+    }
+    renderJournal();
+}
+
+function updateToggleAllBtn() {
+    const btn = document.getElementById('btn-toggle-all');
+    if (!btn) return;
+    btn.textContent = (collapsedEntries.size > 0 && collapsedEntries.size === journal.length && journal.length > 0) ? 'Expandir Todo' : 'Contraer Todo';
+}
+
 // --- RENDERIZADO DEL DIARIO ---
 function renderJournal() {
     const table = document.getElementById('journal-table');
     table.querySelectorAll('tbody').forEach(tb => tb.remove());
+    
+    updateToggleAllBtn();
     
     const formatFmt = (val) => val > 0 ? parseFloat(val).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '-';
     
@@ -1932,10 +1981,32 @@ function renderJournal() {
         tbody.draggable = true;
         tbody.dataset.id = entry.id;
 
-        let isHaberSection = false;
+        const isCollapsed = collapsedEntries.has(entry.id);
         let rowsHtml = '';
 
+        // --- FILA CABECERA / RESUMEN (Plegable, movida hacia arriba para actuar como título) ---
+        rowsHtml += `
+            <tr class="entry-summary-row" onclick="toggleJournalEntry('${entry.id}', event)" style="cursor:pointer; background:var(--surface2); border-bottom: ${isCollapsed ? '2px solid var(--border2)' : '1px solid var(--border)'};">
+                <td class="text-center drag-handle-journal" title="Arrastrar para reordenar asiento" style="width:40px;">⋮⋮</td>
+                <td class="mono" style="font-weight:bold; color:var(--ink); text-align:center; vertical-align:middle;">
+                    <span class="toggle-icon" style="display:inline-block; width:15px; font-size:0.7rem; color:var(--ink3); margin-right:4px;">${isCollapsed ? '▶' : '▼'}</span>
+                    #${entry.orden || ''}
+                </td>
+                <td colspan="3" style="font-style:italic; color:var(--ink2); padding-left:1rem; vertical-align:middle;">
+                    <span style="font-weight:600; font-style:normal; margin-right:8px; color:var(--ink);">${entry.date || ''}</span>
+                    v/r: ${entry.glosa || ''}
+                </td>
+                <td class="text-right" style="white-space: nowrap;">
+                    <button class="btn btn-outline" style="padding:0.3rem 0.6rem; font-size:0.75rem; border:none; color:var(--accent); margin-right:2px;" onclick="duplicateEntry('${entry.id}')" title="Repetir Asiento">🔄</button>
+                    <button class="btn btn-outline" style="padding:0.3rem 0.6rem; font-size:0.75rem; border:none; color:var(--accent); margin-right:2px;" onclick="editEntry('${entry.id}')" title="Editar Asiento">✏️</button>
+                    <button class="btn btn-danger" style="padding:0.3rem 0.6rem; font-size:0.75rem; border:none;" onclick="deleteEntry('${entry.id}')" title="Eliminar Asiento">🗑️</button>
+                </td>
+            </tr>
+        `;
+
+        // --- FILAS DE DETALLE (Líneas Contables) ---
         entry.lines.forEach((l, idx) => {
+            let isHaberSection = false;
             if (l.t === 'H') isHaberSection = true;
             else if (l.t === 'D') isHaberSection = false;
             else {
@@ -1944,36 +2015,20 @@ function renderJournal() {
             }
 
             let indent = 0;
-            if (l.c.length > 4) indent += 1.5;
+            if (l.c && l.c.length > 4) indent += 1.5;
             if (isHaberSection) indent += 3;
 
             rowsHtml += `
-                <tr>
-                    <td class="mono" style="font-size:0.75rem; text-align:center">${idx === 0 ? entry.date : ''}</td>
-                    <td class="mono" style="font-weight:600;color:var(--accent);text-align:center">${l.c}</td>
-                    <td style="padding-left:calc(1rem + ${indent}rem)">${l.n}</td>
-                    <td class="text-right mono">${formatFmt(l.p)}</td>
-                    <td class="text-right mono">${formatFmt(l.d)}</td>
-                    <td class="text-right mono">${formatFmt(l.h)}</td>
+                <tr class="entry-detail-row" style="${isCollapsed ? 'display:none;' : ''}">
+                    <td></td>
+                    <td class="mono" style="font-weight:600;color:var(--accent);text-align:center">${l.c || ''}</td>
+                    <td style="padding-left:calc(1rem + ${indent}rem)">${l.n || ''}</td>
+                    <td class="text-right mono">${formatFmt(l.p || 0)}</td>
+                    <td class="text-right mono">${formatFmt(l.d || 0)}</td>
+                    <td class="text-right mono">${formatFmt(l.h || 0)}</td>
                 </tr>
             `;
         });
-        
-        // Aquí se asegura que se muestra entry.orden visualmente en el asiento
-        rowsHtml += `
-            <tr style="background:var(--surface2); border-bottom: 2px solid var(--border2)">
-                <td class="text-center drag-handle-journal" title="Arrastrar para reordenar asiento">⋮⋮</td>
-                <td></td>
-                <td colspan="3" style="font-style:italic; color:var(--ink2); padding-left:1rem; vertical-align:middle;">
-                    v/r: ${entry.glosa} <span style="margin-left:1rem;color:var(--ink3);font-size:0.7rem">(Asiento #${entry.orden})</span>
-                </td>
-                <td class="text-right" style="white-space: nowrap;">
-                    <button class="btn btn-outline" style="padding:0.4rem 0.8rem; font-size:0.75rem; border:none; color:var(--accent); margin-right:5px;" onclick="duplicateEntry('${entry.id}')">🔄 Repetir</button>
-                    <button class="btn btn-outline" style="padding:0.4rem 0.8rem; font-size:0.75rem; border:none; color:var(--accent); margin-right:5px;" onclick="editEntry('${entry.id}')">✏️ Editar</button>
-                    <button class="btn btn-danger" style="padding:0.4rem 0.8rem; font-size:0.75rem; border:none;" onclick="deleteEntry('${entry.id}')">🗑️ Eliminar</button>
-                </td>
-            </tr>
-        `;
 
         tbody.innerHTML = rowsHtml;
         table.appendChild(tbody);
