@@ -20,7 +20,7 @@
   --accent:#1a56db;--accent2:#0e3fa3;--accent-pale:#e8effe;
   --green:#0d7a4e;--green-pale:#e6f5ee;
   --red:#c0392b;--red-pale:#fdf0ef;
-  --border:#e2e5ec;--border2:#cbd5e1;--radius:12px;
+  --border:#e2e5ec;--border2:#cbd5e1;--radius:8px;
 }
 
 body{font-family:'Sora',sans-serif;background:var(--bg);color:var(--ink);overflow-x:hidden}
@@ -42,53 +42,53 @@ body{font-family:'Sora',sans-serif;background:var(--bg);color:var(--ink);overflo
 .upload-zone:hover {border-color:var(--accent);background:var(--accent-pale)}
 
 /* --- HEADER & NAV --- */
-header{background:var(--ink);color:white;padding:1.2rem 2.5rem;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:100}
-.logo{font-weight:700;font-size:1.4rem;letter-spacing:-0.5px}
+header{background:var(--ink);color:white;padding:0.8rem 2.5rem;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:100}
+.logo{font-weight:700;font-size:1.2rem;letter-spacing:-0.5px}
 .logo span{color:var(--accent)}
 
-nav{display:flex;gap:0.5rem;background:rgba(255,255,255,0.05);padding:0.4rem;border-radius:14px}
-nav button{background:transparent;border:none;color:var(--ink3);padding:0.6rem 1.2rem;border-radius:10px;cursor:pointer;font-weight:600;font-family:inherit;transition:0.2s}
+nav{display:flex;gap:0.5rem;background:rgba(255,255,255,0.05);padding:0.3rem;border-radius:10px}
+nav button{background:transparent;border:none;color:var(--ink3);padding:0.5rem 1rem;border-radius:8px;cursor:pointer;font-weight:600;font-size:0.8rem;font-family:inherit;transition:0.2s}
 nav button:hover{color:white}
 nav button.active{background:var(--accent);color:white}
 
 /* --- MAIN --- */
-main{max-width:1400px;margin:2rem auto;padding:0 1.5rem}
+main{max-width:1450px;margin:1rem auto;padding:0 1.5rem}
 .view{display:none}
 .view.active{display:block;animation:viewFade 0.4s ease}
 @keyframes viewFade{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 
-.card{background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);margin-bottom:2rem;overflow:hidden}
-.card-header{padding:1.5rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.card{background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);margin-bottom:1rem;overflow:hidden}
+.card-header{padding:1rem 1.5rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
 
 /* --- FORMULARIO DIARIO --- */
-.entry-form{padding:1.5rem;background:var(--surface2)}
-.entry-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1.5rem;margin-bottom:1.5rem}
-.form-group label{display:block;font-size:0.75rem;font-weight:700;margin-bottom:0.5rem;color:var(--ink2)}
+.entry-form{padding:1rem 1.5rem;background:var(--surface2)}
+.entry-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin-bottom:1rem}
+.form-group label{display:block;font-size:0.7rem;font-weight:700;margin-bottom:0.3rem;color:var(--ink2)}
 
-.line-row{display:grid;grid-template-columns:30px 160px 1fr 70px 120px 120px 120px 45px;gap:10px;margin-bottom:10px;align-items:start; border-radius:8px; transition: background 0.2s, box-shadow 0.2s;}
+.line-row{display:grid;grid-template-columns:25px 140px 1fr 65px 110px 110px 110px 35px;gap:8px;margin-bottom:6px;align-items:center; border-radius:6px; transition: background 0.2s, box-shadow 0.2s;}
 .line-row.dragging{opacity:0.6; background:var(--surface2); border: 1px dashed var(--accent); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); z-index: 50;}
-.drag-handle{cursor:grab; display:flex; align-items:center; justify-content:center; color:var(--border2); font-size:1.2rem; height:45px; user-select:none; transition:0.2s;}
+.drag-handle{cursor:grab; display:flex; align-items:center; justify-content:center; color:var(--border2); font-size:1rem; height:32px; user-select:none; transition:0.2s;}
 .drag-handle:hover{color:var(--accent);}
 .drag-handle:active{cursor:grabbing;}
 
-.btn-toggle-type{padding:0.75rem 0.5rem;border-radius:8px;font-weight:700;font-size:0.7rem;border:none;cursor:pointer;transition:0.2s;width:100%}
+.btn-toggle-type{padding:0.4rem 0.2rem;border-radius:6px;font-weight:700;font-size:0.65rem;border:none;cursor:pointer;transition:0.2s;width:100%}
 .btn-debe{background:var(--accent-pale);color:var(--accent);}
 .btn-haber{background:var(--ink2);color:white;}
 .autocomplete-wrapper{position:relative}
-.suggestions{position:absolute;top:100%;left:0;right:0;background:white;border:1px solid var(--border);border-radius:8px;box-shadow:0 10px 25px rgba(0,0,0,0.1);max-height:220px;overflow-y:auto;z-index:100;display:none}
-.suggestion-item{padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--bg);font-size:0.8rem; line-height: 1.2;}
+.suggestions{position:absolute;top:100%;left:0;right:0;background:white;border:1px solid var(--border);border-radius:6px;box-shadow:0 10px 25px rgba(0,0,0,0.1);max-height:220px;overflow-y:auto;z-index:100;display:none}
+.suggestion-item{padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--bg);font-size:0.75rem; line-height: 1.2;}
 .suggestion-item:hover, .suggestion-item.active-suggestion {background:var(--accent-pale); border-left: 3px solid var(--accent);}
-.btn-create-acc{background:var(--green-pale); color:var(--green); font-weight:700; text-align:center; padding:12px; border-top:1px solid var(--border)}
+.btn-create-acc{background:var(--green-pale); color:var(--green); font-weight:700; text-align:center; padding:10px; border-top:1px solid var(--border)}
 
-input,select{width:100%;padding:0.75rem 1rem;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:0.9rem;transition: 0.2s;}
-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-pale)}
-input.error{border-color:var(--red); box-shadow:0 0 0 4px var(--red-pale);}
+input,select{width:100%;padding:0.4rem 0.6rem;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:0.8rem;transition: 0.2s;}
+input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-pale)}
+input.error{border-color:var(--red); box-shadow:0 0 0 3px var(--red-pale);}
 
 /* Estilo para creación de cuenta inline */
 input.creating-mode {
     background: #ffffff !important;
     border-color: var(--green);
-    box-shadow: 0 0 0 4px var(--green-pale);
+    box-shadow: 0 0 0 3px var(--green-pale);
     color: var(--green);
     font-weight: 600;
 }
@@ -104,7 +104,7 @@ input.creating-mode::placeholder { color: #86efac; font-weight: 400; }
 }
 
 @keyframes cellFlashAnim {
-    0% { box-shadow: inset 0 0 0 3px var(--green); background: var(--green-pale); }
+    0% { box-shadow: inset 0 0 0 2px var(--green); background: var(--green-pale); }
     100% { box-shadow: none; background: transparent; }
 }
 .cell-flash {
@@ -116,11 +116,11 @@ input.creating-mode::placeholder { color: #86efac; font-weight: 400; }
     background: #fdfeff !important;
 }
 
-.mono{font-family:'JetBrains Mono',monospace;font-size:0.85rem}
+.mono{font-family:'JetBrains Mono',monospace;font-size:0.75rem}
 .text-right{text-align:right}
 
 /* --- ESTILOS DE ÁRBOL DEL MAYOR E HISTORIAL --- */
-.tree-item { user-select: none; }
+.tree-item { user-select: none; font-size: 0.8rem; }
 .hover-bg:hover { background: var(--surface2) !important; }
 
 /* Drag & Drop para Asientos Enteros */
@@ -131,23 +131,23 @@ input.creating-mode::placeholder { color: #86efac; font-weight: 400; }
 .drag-handle-journal:active { cursor: grabbing; }
 
 /* --- BUTTONS --- */
-.btn{padding:0.75rem 1.5rem;border-radius:10px;font-weight:600;cursor:pointer;transition:0.2s;font-family:inherit;border:none;display:inline-flex;align-items:center;gap:8px}
+.btn{padding:0.5rem 1rem;border-radius:6px;font-weight:600;font-size:0.8rem;cursor:pointer;transition:0.2s;font-family:inherit;border:none;display:inline-flex;align-items:center;gap:6px}
 .btn-primary{background:var(--accent);color:white}
 .btn-primary:hover{background:var(--accent2)}
-.btn-outline{background:transparent;border:1px solid var(--border);color:var(--ink2)}
-.btn-outline:hover{background:var(--surface2)}
+.btn-outline{background:transparent;border:1px solid var(--border2);color:var(--ink2)}
+.btn-outline:hover{background:var(--surface2); color:var(--ink)}
 .btn-danger{color:var(--red);background:var(--red-pale)}
 
 /* --- TABLAS --- */
 table{width:100%;border-collapse:collapse}
-th{padding:1rem;background:var(--bg);font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;color:var(--ink3);border-bottom:2px solid var(--border)}
-td{padding:1rem;border-bottom:1px solid var(--border);font-size:0.9rem}
+th{padding:0.6rem 1rem;background:var(--bg);font-size:0.65rem;text-transform:uppercase;letter-spacing:1px;color:var(--ink3);border-bottom:2px solid var(--border)}
+td{padding:0.6rem 1rem;border-bottom:1px solid var(--border);font-size:0.8rem}
 
 /* --- TOTALS BAR --- */
-.totals-bar{display:flex;gap:2rem;background:var(--ink);color:white;padding:1.2rem 2rem;border-radius:16px;margin-top:1.5rem;justify-content:flex-end}
+.totals-bar{display:flex;gap:1.5rem;background:var(--ink);color:white;padding:0.8rem 1.5rem;border-radius:12px;margin-top:1rem;justify-content:flex-end}
 .total-item{display:flex;flex-direction:column;align-items:flex-end}
 .total-item label{font-size:0.65rem;color:var(--ink3);text-transform:uppercase;font-weight:700}
-.total-item span{font-family:'JetBrains Mono';font-size:1.2rem}
+.total-item span{font-family:'JetBrains Mono';font-size:1rem}
 
 /* --- PRUEBA DE VIDA CATÁLOGO --- */
 .stats-badge {
@@ -767,7 +767,7 @@ async function syncSupabase(showMsg = true) {
                         return {
                             c: codigoCuenta,
                             n: dbCatalog.find(x => x.c === codigoCuenta)?.n || localLine?.n || 'Cuenta recuperada',
-                            t: localLine?.t || (m.haber > 0 ? 'H' : 'D'),
+                            t: m.tipo || localLine?.t || (m.haber > 0 ? 'H' : 'D'),
                             p: m.parcial !== undefined && m.parcial !== null ? m.parcial : (localLine?.p || 0),
                             d: m.debe || 0,
                             h: m.haber || 0,
@@ -826,7 +826,42 @@ function getCellValueByRef(ref) {
     else if (col === 'E') input = row.querySelector('.input-parcial');
     
     if (!input) return 0;
-    return parseCurrency(input.value);
+    return getNumericValue(input);
+}
+
+// 🚀 NUEVO: Paleta de colores y motor de resaltado para fórmulas tipo Excel
+const formulaColors = [
+    { border: '#3b82f6', bg: '#eff6ff' }, // Azul
+    { border: '#ef4444', bg: '#fef2f2' }, // Rojo
+    { border: '#10b981', bg: '#ecfdf5' }, // Verde
+    { border: '#f59e0b', bg: '#fffbeb' }, // Naranja
+    { border: '#8b5cf6', bg: '#f5f3ff' }, // Morado
+    { border: '#ec4899', bg: '#fdf2f8' }  // Rosa
+];
+
+function clearFormulaHighlights() {
+    document.querySelectorAll('.line-row input[data-cell]').forEach(input => {
+        input.style.boxShadow = '';
+        input.style.backgroundColor = '';
+        input.style.color = '';
+    });
+}
+
+function highlightReferencedCells(expr) {
+    clearFormulaHighlights();
+    if (!expr || !expr.startsWith('=')) return;
+
+    // Extraer referencias únicas (ej. C1, D2)
+    const refs = [...new Set(expr.match(/[CDE][0-9]+/gi) || [])];
+    refs.forEach((ref, idx) => {
+        const colorObj = formulaColors[idx % formulaColors.length];
+        const targetInput = document.querySelector(`input[data-cell="${ref.toUpperCase()}"]`);
+        if (targetInput) {
+            targetInput.style.boxShadow = `inset 0 0 0 2px ${colorObj.border}`;
+            targetInput.style.backgroundColor = colorObj.bg;
+            targetInput.style.color = colorObj.border;
+        }
+    });
 }
 
 function evaluateFormula(formulaStr) {
@@ -894,16 +929,21 @@ document.addEventListener('mousedown', (e) => {
 
             const valBefore = currentVal.substring(0, cursorPos);
             const valAfter = currentVal.substring(cursorPos);
+            
+            // 🚀 RESTRICCIÓN: Verificar si el texto antes del cursor termina en un operador o '='
+            const endsWithOperator = /[=+\-*/(]$/.test(valBefore.trim());
+            
+            if (!endsWithOperator) {
+                showToast("Agregue un operador (+, -, *, /) antes de seleccionar otra celda.");
+                return; // ⛔ Abortamos la inserción para no crear referencias infinitas sin lógica
+            }
+
             activeFormulaInput.value = valBefore + cellRef + valAfter;
 
             const newPos = cursorPos + cellRef.length;
             activeFormulaInput.setSelectionRange(newPos, newPos);
 
             handleMathInput(activeFormulaInput);
-
-            targetInput.classList.remove('cell-flash'); 
-            void targetInput.offsetWidth; 
-            targetInput.classList.add('cell-flash');
         }
     }
 });
@@ -915,6 +955,12 @@ function handleMathFocus(input) {
     if (input.value.startsWith('=')) {
         activeFormulaInput = input;
         input.classList.add('formula-mode-active');
+        highlightReferencedCells(input.value); // 🚀 Mostrar colores al entrar
+        
+        // 🚀 SOLUCIÓN UX: Mover el cursor al final de la celda de forma segura
+        setTimeout(() => {
+            input.selectionStart = input.selectionEnd = input.value.length;
+        }, 10);
     } else {
         activeFormulaInput = null;
         input.classList.remove('formula-mode-active');
@@ -935,9 +981,12 @@ function handleMathInput(input) {
         
         cursorPosition += (cleanVal.length - originalLength);
         input.setSelectionRange(cursorPosition, cursorPosition);
+
+        highlightReferencedCells(cleanVal); // 🚀 Actualizar colores al escribir
     } else {
         activeFormulaInput = null; 
         input.classList.remove('formula-mode-active');
+        clearFormulaHighlights(); // 🚀 Limpiar colores si se borra el "="
         
         formatCurrencyInput(input);
         input.dataset.formula = "";
@@ -949,6 +998,7 @@ function handleMathInput(input) {
 function handleMathBlur(input) {
     activeFormulaInput = null;
     input.classList.remove('formula-mode-active');
+    clearFormulaHighlights(); // 🚀 Limpiar colores al salir de la celda
     
     let val = input.value.trim();
     if (val.startsWith('=')) {
@@ -965,7 +1015,7 @@ function handleMathBlur(input) {
 }
 
 function handleMathKeydown(e, input) {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' || e.key === 'Escape') {
         e.preventDefault();
         input.blur(); 
     }
@@ -977,7 +1027,7 @@ function getNumericValue(input) {
         return evaluateFormula(val);
     }
     if (input.dataset.formula && val === '') {
-        return 0; 
+        return evaluateFormula(input.dataset.formula); 
     }
     return parseCurrency(val);
 }
@@ -1874,7 +1924,8 @@ async function postEntry() {
                 parcial: l.p || 0,
                 parcial_formula: l.p_formula || null,
                 debe_formula: l.d_formula || null,
-                haber_formula: l.h_formula || null
+                haber_formula: l.h_formula || null,
+                tipo: l.t
             }));
 
             const { error: errM } = await supabaseClient.from('movimientos').insert(movsToInsert);
@@ -1987,7 +2038,7 @@ function renderJournal() {
         // --- FILA CABECERA / RESUMEN (Plegable, movida hacia arriba para actuar como título) ---
         rowsHtml += `
             <tr class="entry-summary-row" onclick="toggleJournalEntry('${entry.id}', event)" style="cursor:pointer; background:var(--surface2); border-bottom: ${isCollapsed ? '2px solid var(--border2)' : '1px solid var(--border)'};">
-                <td class="text-center drag-handle-journal" title="Arrastrar para reordenar asiento" style="width:40px;">⋮⋮</td>
+                <td class="text-center drag-handle-journal" title="Arrastrar para reordenar asiento" style="width:40px; color:var(--border2);">⋮⋮</td>
                 <td class="mono" style="font-weight:bold; color:var(--ink); text-align:center; vertical-align:middle;">
                     <span class="toggle-icon" style="display:inline-block; width:15px; font-size:0.7rem; color:var(--ink3); margin-right:4px;">${isCollapsed ? '▶' : '▼'}</span>
                     #${entry.orden || ''}
@@ -2004,7 +2055,6 @@ function renderJournal() {
             </tr>
         `;
 
-        // --- FILAS DE DETALLE (Líneas Contables) ---
         entry.lines.forEach((l, idx) => {
             let isHaberSection = false;
             if (l.t === 'H') isHaberSection = true;
@@ -2018,12 +2068,16 @@ function renderJournal() {
             if (l.c && l.c.length > 4) indent += 1.5;
             if (isHaberSection) indent += 3;
 
+            // 🚀 NUEVO: Lógica de contraste. Si no hay ningún valor, bajamos la opacidad de la fila.
+            const hasValue = (l.p > 0 || l.d > 0 || l.h > 0);
+            const rowStyle = hasValue ? '' : 'opacity: 0.45; filter: grayscale(100%);';
+
             rowsHtml += `
-                <tr class="entry-detail-row" style="${isCollapsed ? 'display:none;' : ''}">
+                <tr class="entry-detail-row" style="${isCollapsed ? 'display:none;' : ''} ${rowStyle}">
                     <td></td>
-                    <td class="mono" style="font-weight:600;color:var(--accent);text-align:center">${l.c || ''}</td>
-                    <td style="padding-left:calc(1rem + ${indent}rem)">${l.n || ''}</td>
-                    <td class="text-right mono">${formatFmt(l.p || 0)}</td>
+                    <td class="mono" style="font-weight:600;color:var(--ink3);text-align:center">${l.c || ''}</td>
+                    <td style="padding-left:calc(1rem + ${indent}rem); color:${isHaberSection ? 'var(--ink2)' : 'var(--ink)'};">${l.n || ''}</td>
+                    <td class="text-right mono" style="color:var(--ink3)">${formatFmt(l.p || 0)}</td>
                     <td class="text-right mono">${formatFmt(l.d || 0)}</td>
                     <td class="text-right mono">${formatFmt(l.h || 0)}</td>
                 </tr>
